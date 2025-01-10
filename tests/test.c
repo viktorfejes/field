@@ -7,6 +7,25 @@
 // At this point this is more like a playground to test the API
 // !!!THIS IS NOT A UNIT TEST OR ANYTHING SERIOUS!!!
 
+// Helper function to dump the linked list structure
+static void debug_dump_structure(fld_object *root) {
+    printf("\n=== Debug Dump ===\n");
+    fld_object *obj = root;
+    int count = 0;
+    printf("Root addr: %p\n", (void*)root);
+    
+    while (obj && count < 20) {  // Limit to avoid infinite loops
+        printf("Object %d: addr=%p, next=%p, key='%.*s'\n", 
+            count++,
+            (void*)obj,
+            (void*)obj->next,
+            (int)obj->key.length,
+            obj->key.start);
+        obj = obj->next;
+    }
+    printf("================\n\n");
+}
+
 int main(void) {
     const char* test_input = 
         "// This is a test input\n"
@@ -67,6 +86,32 @@ int main(void) {
             printf("  %f\n", hobby[i]);
         }
     }
+
+    printf("\n\n");
+
+    // Example usage for flat iter:
+    fld_iterator it;
+    fld_iter_init(&it, parser.root, FLD_ITER_FIELDS);
+
+    // For flat iteration
+    while (it.current) {
+        printf("Field: %.*s\n", (int)it.current->key.length, it.current->key.start);
+        it.current = it.current->next;
+    }
+
+    printf("\n\n");
+
+    // For recursive iteration
+    fld_iterator rec_it;
+    fld_iter_init(&rec_it, parser.root, FLD_ITER_RECURSIVE);
+
+    while (rec_it.current) {
+        const char* indent = "                                ";
+        printf("%*.s Field: %.*s\n", rec_it.depth * 4, indent, (int)rec_it.current->key.length, rec_it.current->key.start);
+        fld_iter_next(&rec_it);
+    }
+
+    debug_dump_structure(parser.root);
 
     return 0;
 }

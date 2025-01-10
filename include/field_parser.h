@@ -1,8 +1,9 @@
 /*
-*   fld_parser - v0.21
+*   fld_parser - v0.4
 *   Header-only library for parsing configuration files in the FLD format.
 *
 *   RECENT CHANGES:
+*       0.4     (2025-01-10)    Added iterator support to the parser;
 *       0.3     (2025-01-10)    Renamed `fld_get_string` to `fld_get_str_view`,
 *                               Added `fld_get_cstr` for immediate c string retrival,
 *                               Added `fld_has field`, `fld_get_type`, `fld_get_array_size`,
@@ -166,6 +167,18 @@ typedef struct {
     fld_object *root;
 } fld_parser;
 
+typedef enum fld_iter_type {
+    FLD_ITER_FIELDS,    // Iterate over fields at current level
+    FLD_ITER_RECURSIVE, // Recursively iterate all fields including nested
+} fld_iter_type;
+
+typedef struct {
+    fld_object *current;
+    fld_object *parent;
+    fld_iter_type type;
+    int depth;
+} fld_iterator;
+
 #if defined(__cplusplus)
     #define ALIGNOF(type) alignof(type)
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
@@ -246,6 +259,35 @@ extern bool fld_string_view_to_cstr(fld_string_view str_view, char *buffer, size
 extern bool fld_string_view_eq(fld_string_view str_view, const char* cstr);
 
 extern size_t fld_estimate_memory(const char *source);
+
+/**
+ * @brief Advances the iterator to the next field object.
+ *
+ * This function retrieves the next field object in the sequence
+ * represented by the iterator. If there are no more objects, it
+ * returns nullptr.
+ *
+ * @param iter A pointer to the field iterator.
+ * @return A pointer to the next field object, or nullptr if there
+ *         are no more objects.
+ */
+extern fld_object *fld_iter_next(fld_iterator *iter);
+
+/**
+ * @brief Initializes a field iterator.
+ *
+ * This function initializes a field iterator with the given root object and iterator type.
+ *
+ * @param iter Pointer to the field iterator to initialize.
+ * @param root Pointer to the root field object.
+ * @param type Type of the iterator.
+ */
+static inline void fld_iter_init(fld_iterator *iter, fld_object *root, fld_iter_type type) {
+    iter->current = root;
+    iter->parent = NULL;
+    iter->type = type;
+    iter->depth = 0;
+}
 
 static inline fld_error fld_get_last_error(fld_parser *parser) {
     return parser->last_error;
@@ -1182,6 +1224,39 @@ bool fld_string_view_eq(fld_string_view str_view, const char* cstr) {
 size_t fld_estimate_memory(const char *source) {
     size_t len;
     return _estimate_memory_needed(source, &len);
+}
+
+fld_object *fld_iter_next(fld_iterator *iter) {
+    if (!iter->current) return NULL;
+
+    fld_object *result = iter->current;
+
+    // For recursive, try to go deeper if we have an object
+    if (iter->type == FLD_ITER_RECURSIVE && result->value.type == FLD_VALUE_OBJECT && result->value.object) {
+        // Set current as parent and descend
+        iter->parent = result;
+        iter->current = result->value.object;
+        iter->depth++;
+        return result;
+    }
+
+    // Move to the next sibling
+    if (iter->current->next) {
+        iter->current = iter->current->next;
+        return result;
+    }
+
+    // For recursive iter, go back up if we can't move to siblings
+    if (iter->type == FLD_ITER_RECURSIVE && iter->parent) {
+        iter->current = iter->parent->next;
+        iter->parent = iter->parent->parent;
+        iter->depth--;
+        return result;
+    }
+
+    // No more nodes to visit
+    iter->current = NULL;
+    return result;
 }
 
 #endif // FLD_PARSER_IMPLEMENTATION
