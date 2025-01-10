@@ -3,6 +3,10 @@
 
 #include <stdio.h>
 
+// !!!THIS IS NOT A UNIT TEST OR ANYTHING SERIOUS!!!
+// At this point this is more like a playground to test the API
+// !!!THIS IS NOT A UNIT TEST OR ANYTHING SERIOUS!!!
+
 int main(void) {
     const char* test_input = 
         "// This is a test input\n"
