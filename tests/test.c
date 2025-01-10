@@ -32,9 +32,14 @@ int main(void) {
         return 1;
     }
 
+    char str_buff[64];
+    if (fld_get_cstr(parser.root, "username", str_buff, sizeof(str_buff))) {
+        printf("Username: %s\n", str_buff);
+    }
+
     fld_string_view test;
-    if (fld_get_string(parser.root, "settings.theme", &test.start, &test.length)) {
-        printf("Username: %.*s\n", test.length, test.start);
+    if (fld_get_str_view(parser.root, "settings.theme", &test)) {
+        printf("Settings.theme: %.*s\n", test.length, test.start);
     }
 
     int age;
@@ -44,12 +49,12 @@ int main(void) {
 
     float brightness;
     if (fld_get_float(parser.root, "settings.display.brightness", &brightness)) {
-        printf("Brightness: %f\n", brightness);
+        printf("Settings.display.brightness: %f\n", brightness);
     }
 
     bool notifications;
     if (fld_get_bool(parser.root, "settings.notifications", &notifications)) {
-        printf("Notifications: %s\n", notifications ? "true" : "false");
+        printf("Settings.notifications: %s\n", notifications ? "true" : "false");
     }
 
     fld_value_type array_type;

@@ -162,10 +162,10 @@ if (!fld_parse(&parser, input_string, memory, sizeof(memory))) {
 The parser provides type-specific functions to access values:
 
 ```c
-// Get a string value
-fld_string_view str_val;
-if (fld_get_string(parser.root, "settings.theme", &str_val.start, &str_val.length)) {
-    printf("Theme: %.*s\n", str_val.length, str_val.start);
+// Get a string view
+fld_string_view str_view;
+if (fld_get_string(parser.root, "settings.theme", &str_view)) {
+    printf("Theme: %.*s\n", str_view.length, str_view.start);
 }
 
 // Get an integer value

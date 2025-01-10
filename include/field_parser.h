@@ -1,8 +1,14 @@
 /*
-*   fld_parser - v0.2
+*   fld_parser - v0.21
 *   Header-only library for parsing configuration files in the FLD format.
 *
 *   RECENT CHANGES:
+*       0.3     (2025-01-10)    Renamed `fld_get_string` to `fld_get_str_view`,
+*                               Added `fld_get_cstr` for immediate c string retrival,
+*                               Added `fld_has field`, `fld_get_type`, `fld_get_array_size`,
+*                               `fld_string_view_to_cstr`, `fld_string_view_eq`,
+*                               `fld_get_last_error`, `fld_error_string`, and `fld_estimate_memory`;
+*       0.21    (2025-01-10)    Removed stddef.h that wasn't needed anymore;
 *       0.2     (2025-01-10)    Removed some remaining temp code,
 *                               Added block comment support,
 *                               Updated readme and `test.c` to reflect changes;
@@ -33,6 +39,9 @@
 *       - [ ] A bit more testing...
 *       - [ ] Run some tests to see how close the
 *             memory estimating function gets.
+*       - [ ] Remove stdlib.h include by writing own
+*             int and float parser.
+*       - [ ] Full documentation of public API
 *
  */
 
@@ -42,7 +51,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stddef.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -173,22 +181,95 @@ typedef struct {
 #define FLD_MAX_PATH_LENGTH 128
 #define FLD_MAX_ARRAY_ITEMS 128
 
+/**
+ * @brief Parses the given source using the specified parser.
+ * 
+ * @param parser A pointer to the fld_parser structure that will be used for parsing.
+ * @param source A constant character pointer to the source string to be parsed.
+ * @param memory A pointer to the memory where the parsed data will be stored.
+ * @param size The size of the memory buffer.
+ * @return true if parsing is successful, false otherwise.
+ */
 extern bool fld_parse(fld_parser *parser, const char *source, void *memory, size_t size);
 
 extern fld_object *fld_get_field(fld_object *object, const char *key);
 extern fld_object *fld_get_field_by_path(fld_object *object, const char *path);
-extern bool fld_get_string(fld_object *object, const char *key, const char **out_str, size_t *out_len);
+
+/**
+ * @brief Retrieves a string view associated with a given key from the specified fld_object.
+ * 
+ * @param object Pointer to the fld_object from which the string view is to be retrieved.
+ * @param key The key associated with the desired string view.
+ * @param str_view Pointer to an fld_string_view structure where the result will be stored.
+ * @return true if the string view is successfully retrieved, false otherwise.
+ */
+extern bool fld_get_str_view(fld_object *object, const char *key, fld_string_view *str_view);
+
+/**
+ * @brief Retrieves a C-string value associated with a given key from a field object.
+ *
+ * This function searches for a key within the specified field object and, if found,
+ * copies the associated C-string value into the provided buffer. The buffer size
+ * must be large enough to hold the value, including the null-terminator.
+ *
+ * @param object Pointer to the field object from which to retrieve the value.
+ * @param key The key associated with the desired C-string value.
+ * @param buffer Pointer to the buffer where the retrieved C-string value will be stored.
+ * @param buffer_size The size of the buffer, in bytes.
+ * @return true if the key was found and the value was successfully copied to the buffer; 
+ *         false otherwise.
+ */
+extern bool fld_get_cstr(fld_object *object, const char *key, char *buffer, size_t buffer_size);
+
+/**
+ * @brief Retrieves an integer value from a field object based on the provided key.
+ *
+ * This function searches for the specified key within the given field object and,
+ * if found, assigns the corresponding integer value to the output parameter.
+ *
+ * @param object A pointer to the field object from which to retrieve the value.
+ * @param key The key associated with the desired integer value.
+ * @param out_value A pointer to an integer where the retrieved value will be stored.
+ * @return true if the key was found and the value was successfully retrieved, false otherwise.
+ */
 extern bool fld_get_int(fld_object *object, const char *key, int *out_value);
 extern bool fld_get_float(fld_object *object, const char *key, float *out_value);
 extern bool fld_get_bool(fld_object *object, const char *key, bool *out_value);
 extern bool fld_get_array(fld_object *object, const char *key, fld_value_type *out_type, void** out_items, size_t* out_count);
 extern bool fld_get_object(fld_object *object, const char *key, fld_object **out_object);
 
+extern bool fld_has_field(fld_object *object, const char *key);
+extern fld_value_type fld_get_type(fld_object *object, const char *key);
+extern bool fld_get_array_size(fld_object *object, const char *key, size_t *out_size);
+
+extern bool fld_string_view_to_cstr(fld_string_view str_view, char *buffer, size_t buffer_size);
+extern bool fld_string_view_eq(fld_string_view str_view, const char* cstr);
+
+extern size_t fld_estimate_memory(const char *source);
+
+static inline fld_error fld_get_last_error(fld_parser *parser) {
+    return parser->last_error;
+}
+
+static inline const char *fld_error_string(fld_error_code code) {
+    switch (code) {
+        case FLD_ERROR_NONE: return "No error";
+        case FLD_ERROR_OUT_OF_MEMORY: return "Out of memory";
+        case FLD_ERROR_UNEXPECTED_TOKEN: return "Unexpected token";
+        case FLD_ERROR_INVALID_NUMBER: return "Invalid number format";
+        case FLD_ERROR_INSUFFICIENT_MEMORY: return "Insufficient memory provided";
+        case FLD_ERROR_ARRAY_TYPE_MISMATCH: return "Array type mismatch";
+        case FLD_ERROR_ARRAY_NOT_SUPPORTED_TYPE: return "Unsupported array type";
+        case FLD_ERROR_ARRAY_TOO_MANY_ITEMS: return "Too many items in array";
+        default: return "Unknown error";
+    }
+}
+
 #ifdef __cplusplus
 }
 #endif
 
-// TEMP
+// TEMP: For developing
 // #define FLD_PARSER_IMPLEMENTATION
 #ifdef FLD_PARSER_IMPLEMENTATION
 
@@ -983,13 +1064,37 @@ fld_object *fld_get_field_by_path(fld_object *object, const char *path) {
     return NULL;
 }
 
-bool fld_get_string(fld_object *object, const char *key, const char **out_str, size_t *out_len) {
+bool fld_get_str_view(fld_object *object, const char *key, fld_string_view *str_view) {
     fld_object *field = fld_get_field_by_path(object, key);
     if (!field || field->value.type != FLD_VALUE_STRING) {
         return false;
     }
-    *out_str = field->value.string.start;
-    *out_len = field->value.string.length;
+    str_view->start = field->value.string.start;
+    str_view->length = field->value.string.length;
+    return true;
+}
+
+bool fld_get_cstr(fld_object *object, const char *key, char *buffer, size_t buffer_size) {
+    fld_string_view str_view;
+
+    // Validate input
+    if (!buffer || buffer_size == 0) return false;
+    
+    // Try to get string view first
+    if (!fld_get_str_view(object, key, &str_view)) {
+        // Null terminate on failure
+        buffer[0] = '\0';
+        return false;
+    }
+
+    // Check if buffer is large enough plus null terminator
+    if (str_view.length >= buffer_size) {
+        buffer[0] = '\0';
+        return false;
+    }
+
+    memcpy(buffer, str_view.start, str_view.length);
+    buffer[str_view.length] = '\0';
     return true;
 }
 
@@ -1038,6 +1143,45 @@ bool fld_get_object(fld_object *object, const char *key, fld_object **out_object
     }
     *out_object = field->value.object;
     return true;
+}
+
+bool fld_has_field(fld_object *object, const char *key) {
+    return fld_get_field_by_path(object, key) != NULL;
+}
+
+fld_value_type fld_get_type(fld_object *object, const char *key) {
+    fld_object *field = fld_get_field_by_path(object, key);
+    if (!field) {
+        return FLD_VALUE_EMPTY;
+    }
+    return field->value.type;
+}
+
+bool fld_get_array_size(fld_object *object, const char *key, size_t *out_size) {
+    fld_object *field = fld_get_field_by_path(object, key);
+    if (!field || field->value.type != FLD_VALUE_ARRAY) {
+        return false;
+    }
+    *out_size = field->value.array.count;
+    return true;
+}
+
+bool fld_string_view_to_cstr(fld_string_view str_view, char *buffer, size_t buffer_size) {
+    if (buffer_size <= str_view.length) return false;
+    memcpy(buffer, str_view.start, str_view.length);
+    buffer[str_view.length] = '\0';
+    return true;
+}
+
+bool fld_string_view_eq(fld_string_view str_view, const char* cstr) {
+    size_t cstr_len = strlen(cstr);
+    if (cstr_len != str_view.length) return false;
+    return memcmp(str_view.start, cstr, str_view.length) == 0;
+}
+
+size_t fld_estimate_memory(const char *source) {
+    size_t len;
+    return _estimate_memory_needed(source, &len);
 }
 
 #endif // FLD_PARSER_IMPLEMENTATION
