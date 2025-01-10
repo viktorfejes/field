@@ -12,10 +12,33 @@ A lightweight, header-only configuration parser for the `.fld` format with an ef
 - Simple dot notation for accessing nested values
 - Single-line compatibility unlike YAML, making it ideal for command-line tools and simple configurations
 - Strongly typed arrays that enforce consistent value types
+- Support for both single-line and block comments
 
 ## File Format
 
 Field uses a simple, readable syntax for configuration files with the `.fld` extension. The format supports comments, multiple data types, and nested structures.
+
+### Comments
+
+The format supports both single-line and block comments:
+
+```field
+// This is a single-line comment
+
+/* This is a block comment
+   that can span multiple lines
+   and is ideal for longer documentation */
+
+username = "jane_doe";  // Inline comments are supported too
+
+/* Block comments can also
+   document complex structures */
+settings = {
+    theme = "dark";    /* With inline
+                         block comments */
+    notifications = true;
+};
+```
 
 ### Supported Types
 
@@ -36,7 +59,8 @@ The configuration can be formatted with newlines for readability:
 username = "jane_doe";           // populated string value
 description = "";               // zero value for strings
 
-// Integer fields  
+/* User information block
+   Contains demographic data */
 age = 30;                       // populated integer value
 login_count = 0;               // zero value for integers
 
@@ -52,7 +76,9 @@ is_verified = false;           // zero value for booleans
 hobbies = ["reading", "hiking", "photography"];    // populated array
 tags = [];                                        // zero value for arrays
 
-// Nested structure demonstration
+/* Settings block
+   Contains all user preferences
+   and display configurations */
 settings = {
     theme = "dark";
     notifications = true;
@@ -69,7 +95,7 @@ settings = {
 The same configuration can be written on a single line, making it perfect for command-line tools:
 
 ```field
-username = "jane_doe"; age = 30; settings = { theme = "dark"; notifications = true; display = { brightness = 0.8; }; };
+/* Basic configuration */ username = "jane_doe"; age = 30; /* User settings */ settings = { theme = "dark"; notifications = true; display = { brightness = 0.8; }; };
 ```
 
 ### Array Type Rules

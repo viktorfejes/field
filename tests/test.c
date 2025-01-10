@@ -11,7 +11,7 @@ int main(void) {
     const char* test_input = 
         "// This is a test input\n"
         "username = \"jane_doe\";\n"
-        "age = 30;\n"
+        "age = 30; /* This is a random comment here, and no new line */"
         "height = 1.75;\n"
         "is_active = true;\n"
         "hobbies = [\"reading\", \"hiking\"];\n"

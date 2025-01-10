@@ -1,8 +1,11 @@
 /*
-*   fld_parser - v0.1
+*   fld_parser - v0.2
 *   Header-only library for parsing configuration files in the FLD format.
 *
 *   RECENT CHANGES:
+*       0.2     (2025-01-10)    Removed some remaining temp code,
+*                               Added block comment support,
+*                               Updated readme and `test.c` to reflect changes;
 *       0.1     (2025-01-09)    Finalized first implementation;
 *
 *   LICENSE: MIT License
@@ -28,6 +31,8 @@
 *
 *   TODOs:
 *       - [ ] A bit more testing...
+*       - [ ] Run some tests to see how close the
+*             memory estimating function gets.
 *
  */
 
@@ -228,6 +233,7 @@ static inline void *_bump_alloc_raw(fld_bump_allocator *alloc, size_t size) {
     return result;
 }
 
+// TODO: Run a couple tests to see how close this estimate is
 static inline size_t _estimate_memory_needed(const char *source, size_t *out_len) {
     *out_len = strlen(source);
 
@@ -404,9 +410,39 @@ static fld_token *_lexer_scan_token(fld_parser *parser) {
     char c = _lexer_advance(lexer);
 
     // Handle comments
-    if (c == '/' && _lexer_peek(lexer) == '/') {
-        while (_lexer_peek(lexer) != '\n' && !_lexer_is_at_end(lexer)) _lexer_advance(lexer);
-        return _lexer_scan_token(parser); // Recursively get the next token
+    if (c == '/') {
+        // Line comment
+        if (_lexer_peek(lexer) == '/') {
+            while (_lexer_peek(lexer) != '\n' && !_lexer_is_at_end(lexer)) {
+                _lexer_advance(lexer);
+            }
+            // Recursively get the next token
+            return _lexer_scan_token(parser);
+        }
+        // Block comment
+        else if (_lexer_peek(lexer) == '*') {
+            // Consume the '*'
+            _lexer_advance(lexer);
+
+            while (!_lexer_is_at_end(lexer)) {
+                if (_lexer_peek(lexer) == '*' && _lexer_peek_next(lexer) == '/') {
+                    // Consume '*'
+                    _lexer_advance(lexer);
+                    // Consume '/'
+                    _lexer_advance(lexer);
+                    // Recursively get the next token
+                    return _lexer_scan_token(parser);
+                }
+
+                // Handle newlines in block comments
+                if (_lexer_peek(lexer) == '\n') {
+                    lexer->line++;
+                    lexer->column = 1;
+                }
+
+                _lexer_advance(lexer);
+            }
+        }
     }
 
     // Handle string literals
@@ -591,20 +627,6 @@ static size_t _get_type_alignment(fld_value_type type) {
     }
 }
 
-// TODO: remove if not used!
-static size_t _get_value_offset(fld_value_type type) {
-    switch (type) {
-        case FLD_VALUE_STRING: return offsetof(fld_value, string);
-        case FLD_VALUE_INT: return offsetof(fld_value, integer);
-        case FLD_VALUE_FLOAT: return offsetof(fld_value, float_val);
-        case FLD_VALUE_BOOL: return offsetof(fld_value, boolean);
-        default: return 0;
-    }
-}
-
-// TEMP
-#include <assert.h>
-#include <stdio.h>
 static fld_value *_parse_array(fld_parser *parser) {
     // Save lexer state for rewinding
     char* start_pos = parser->lexer.current;
@@ -684,7 +706,6 @@ static fld_value *_parse_array(fld_parser *parser) {
     array->array.items = items;
 
     // Second pass - parse and store values
-    // _parser_advance(parser);  // Skip '['
     char* current = (char*)items;
 
     for (size_t i = 0; i < count; i++) {
@@ -727,138 +748,6 @@ static fld_value *_parse_array(fld_parser *parser) {
     _parser_consume(parser, TOKEN_BRACKET_RIGHT, FLD_ERROR_UNEXPECTED_TOKEN);
 
     return array;
-
-    // // Consume opening bracket
-    // _parser_advance(parser);
-
-    // // Allocate the array value
-    // fld_value *array = (fld_value*)_bump_alloc(&parser->allocator, sizeof(fld_value), ALIGNOF(fld_value));
-    // if (!array) {
-    //     _parser_error(parser, FLD_ERROR_OUT_OF_MEMORY);
-    //     return NULL;
-    // }
-
-    // array->type = FLD_VALUE_ARRAY;
-    // array->array.count = 0;
-    // array->array.items = NULL;
-    // array->array.type = FLD_VALUE_EMPTY;
-
-    // // Handle empty array
-    // if (_parser_match(parser, TOKEN_BRACKET_RIGHT)) {
-    //     return array;
-    // }
-
-    // // Parse the first value to determine type
-    // fld_value *first_value = _parse_value(parser);
-    // if (!first_value) return NULL;
-
-    // // Validate array element type - no nested arrays or objects allowed
-    // if (first_value->type == FLD_VALUE_ARRAY || first_value->type == FLD_VALUE_OBJECT) {
-    //     _parser_error(parser, FLD_ERROR_ARRAY_NOT_SUPPORTED_TYPE);
-    //     return NULL;
-    // }
-
-    // // Set array type and prepare for items
-    // array->array.type = first_value->type;
-    // size_t item_size = _get_type_size(array->array.type);
-    // size_t item_align = _get_type_alignment(array->array.type);
-
-    // // Allocate space for the first item -- properly aligned
-    // void* first_item = _bump_alloc(&parser->allocator, item_size, item_align);
-    // if (!first_item) {
-    //     _parser_error(parser, FLD_ERROR_OUT_OF_MEMORY);
-    //     return NULL;
-    // }
-
-    // // Copy first value
-    // switch (array->array.type) {
-    //     case FLD_VALUE_STRING:
-    //         *((fld_string_view*)first_item) = first_value->string;
-    //         break;
-    //     case FLD_VALUE_INT:
-    //         *((int*)first_item) = first_value->integer;
-    //         break;
-    //     case FLD_VALUE_FLOAT: 
-    //         *((float*)first_item) = first_value->float_val;
-    //         break;
-    //     case FLD_VALUE_BOOL:
-    //         *((bool*)first_item) = first_value->boolean;
-    //         break;
-    //     default:
-    //         _parser_error(parser, FLD_ERROR_ARRAY_TYPE_MISMATCH);
-    //         return NULL;
-    // }
-
-    // array->array.items = first_item;
-    // array->array.count = 1;
-
-    // // HACK: Save allocator position to be able to discard
-    // // the comma token that gets created in the meantime.
-    // uint8_t *alloc_pos = parser->allocator.current;
-
-    // // Parse the remaining values
-    // while (_parser_match(parser, TOKEN_COMMA)) {
-    //     // Sanity check for max items
-    //     if (array->array.count >= FLD_MAX_ARRAY_ITEMS) {
-    //         _parser_error(parser, FLD_ERROR_ARRAY_TOO_MANY_ITEMS);
-    //         return NULL;
-    //     }
-
-    //     // Allocate space for the next item
-    //     void* next_item = _bump_alloc_raw(&parser->allocator, item_size);
-    //     if (!next_item) {
-    //         _parser_error(parser, FLD_ERROR_OUT_OF_MEMORY);
-    //         return NULL;
-    //     }
-
-    //     // TEMP
-    //     printf("First item: %p\n", first_item);
-    //     printf("Next item: %p\n", next_item);
-    //     printf("Expected: %p\n", (char*)first_item + (array->array.count * item_size));
-    //     printf("Item size: %zu\n", item_size);
-    //     printf("Array count: %zu\n", array->array.count);
-
-    //     // TEMP
-    //     assert((char*)next_item == (char*)first_item + (array->array.count * item_size));
-
-    //     // Parse the value
-    //     fld_value *next_value = _parse_value(parser);
-    //     if (!next_value) return NULL;
-
-    //     // Check if the value type matches the array type
-    //     if (next_value->type != array->array.type) {
-    //         _parser_error(parser, FLD_ERROR_ARRAY_TYPE_MISMATCH);
-    //         return NULL;
-    //     }
-
-    //     // Copy value based on type
-    //     switch (array->array.type) {
-    //         case FLD_VALUE_STRING:
-    //             *((fld_string_view*)next_item) = next_value->string;
-    //             break;
-    //         case FLD_VALUE_INT:
-    //             *((int*)next_item) = next_value->integer;
-    //             break;
-    //         case FLD_VALUE_FLOAT:
-    //             *((float*)next_item) = next_value->float_val;
-    //             break;
-    //         case FLD_VALUE_BOOL:
-    //             *((bool*)next_item) = next_value->boolean;
-    //             break;
-    //         default:
-    //             _parser_error(parser, FLD_ERROR_ARRAY_TYPE_MISMATCH);
-    //             return NULL;
-    //     }
-
-    //     array->array.count++;
-    // }
-
-    // // Expect closing bracket
-    // if (!_parser_expect(parser, TOKEN_BRACKET_RIGHT, FLD_ERROR_UNEXPECTED_TOKEN)) {
-    //     return NULL;
-    // }
-
-    // return array;
 }
 
 static fld_value *_parse_value(fld_parser *parser) {
