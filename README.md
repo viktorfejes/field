@@ -85,12 +85,36 @@ username = "jane_doe"; age = 30; settings = { theme = "dark"; notifications = tr
   nested = [[1, 2], [3, 4]];             // Invalid: nested arrays
   ```
 
+## Installation & Setup
+
+The parser follows the single-header file philosophy (similar to [stb](https://github.com/nothings/stb) libraries). To use it:
+
+1. Copy `field_parser.h` to your project
+2. Include the header normally in any file that needs to *declare* the parser functions:
+```c
+#include "field_parser.h"
+```
+
+3. In *exactly one* source file, define `FLD_PARSER_IMPLEMENTATION` before including the header to include the implementation:
+```c
+#define FLD_PARSER_IMPLEMENTATION
+#include "field_parser.h"
+```
+
+This pattern prevents multiple definition errors while maintaining the convenience of a single header file.
+
 ## Usage
 
 ### Including the Parser
 
+Add the necessary include (and implementation define if this is the implementation file):
+
 ```c
+// In your implementation file (e.g. main.c):
 #define FLD_PARSER_IMPLEMENTATION
+#include "field_parser.h"
+
+// In other files that just need declarations:
 #include "field_parser.h"
 ```
 
