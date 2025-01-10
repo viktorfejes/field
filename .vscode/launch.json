@@ -8,7 +8,7 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug",
-            "program": "${workspaceFolder}/lexer.exe",
+            "program": "${workspaceFolder}/field_parser.exe",
             "args": [],
             "cwd": "${workspaceFolder}"
         }
