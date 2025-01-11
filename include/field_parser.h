@@ -1,8 +1,15 @@
 /*
-*   fld_parser - v0.4
+*   fld_parser - v0.41
 *   Header-only library for parsing configuration files in the FLD format.
 *
 *   RECENT CHANGES:
+*       0.41    (2025-01-10)    Fixed some bugs where proper parent relationship was not established;
+*                               Updated readme with new functions and explanations;
+*                               Added a function to be able to get path from iterator;
+*                               Fixed a bug with the iterator where it skipped the first object;
+*                               Changed anonymus union in `fld_value` to `as`;
+*                               Added proper tests in the tests/tests.c;
+*                               Created a quite comprehensive example file in examples/main_example.c;
 *       0.4     (2025-01-10)    Added iterator support to the parser;
 *       0.3     (2025-01-10)    Renamed `fld_get_string` to `fld_get_str_view`,
 *                               Added `fld_get_cstr` for immediate c string retrival,
@@ -37,12 +44,13 @@
 *       SOFTWARE.
 *
 *   TODOs:
-*       - [ ] A bit more testing...
+*       - [x] A bit more testing...
 *       - [ ] Run some tests to see how close the
 *             memory estimating function gets.
 *       - [ ] Remove stdlib.h include by writing own
 *             int and float parser.
 *       - [ ] Full documentation of public API
+*       - [ ] Change key to path in getters to make more sense
 *
  */
 
@@ -86,7 +94,7 @@ typedef struct fld_value {
             void *items;
         } array;
         struct fld_object *object;
-    };
+    } as;
 } fld_value;
 
 typedef struct fld_object {
@@ -205,9 +213,6 @@ typedef struct {
  */
 extern bool fld_parse(fld_parser *parser, const char *source, void *memory, size_t size);
 
-extern fld_object *fld_get_field(fld_object *object, const char *key);
-extern fld_object *fld_get_field_by_path(fld_object *object, const char *path);
-
 /**
  * @brief Retrieves a string view associated with a given key from the specified fld_object.
  * 
@@ -246,16 +251,95 @@ extern bool fld_get_cstr(fld_object *object, const char *key, char *buffer, size
  * @return true if the key was found and the value was successfully retrieved, false otherwise.
  */
 extern bool fld_get_int(fld_object *object, const char *key, int *out_value);
+
+/**
+ * @brief Retrieves a float value from a field object based on the provided key.
+ *
+ * This function searches for the specified key within the given field object and,
+ * if found, assigns the corresponding float value to the output parameter.
+ *
+ * @param object A pointer to the field object from which to retrieve the value.
+ * @param key The key associated with the desired float value.
+ * @param out_value A pointer to a float where the retrieved value will be stored.
+ * @return true if the key was found and the value was successfully retrieved, false otherwise.
+ */
 extern bool fld_get_float(fld_object *object, const char *key, float *out_value);
+
+/**
+ * @brief Retrieves a bool value from a field object based on the provided key.
+ *
+ * This function searches for the specified key within the given field object and,
+ * if found, assigns the corresponding bool value to the output parameter.
+ *
+ * @param object A pointer to the field object from which to retrieve the value.
+ * @param key The key associated with the desired bool value.
+ * @param out_value A pointer to a bool where the retrieved value will be stored.
+ * @return true if the key was found and the value was successfully retrieved, false otherwise.
+ */
 extern bool fld_get_bool(fld_object *object, const char *key, bool *out_value);
+
+
+/**
+ * @brief Retrieves an array from a field object based on a path.
+ *
+ * This function searches for an array associated with the specified key in the given field object.
+ * If the key is found and the associated value is an array, assigns the array's type, items,
+ * and count through the output parameters.
+ *
+ * @param object Pointer to the field object to search.
+ * @param key The key associated with the array to retrieve.
+ * @param out_type Pointer to a variable to receive the type of the array elements.
+ * @param out_items Pointer to a variable to receive the pointer to the array items.
+ * @param out_count Pointer to a variable to receive the count of items in the array.
+ * @return true if the array is found and successfully retrieved, false otherwise.
+ */
 extern bool fld_get_array(fld_object *object, const char *key, fld_value_type *out_type, void** out_items, size_t* out_count);
+
+/**
+ * @brief Retrieves an object from a field object based on a specified key.
+ *
+ * This function searches for an object within the given field object using the provided key.
+ * If the object is found, it is returned through the out_object parameter.
+ *
+ * @param object The field object to search within.
+ * @param key The key to search for within the field object.
+ * @param out_object A pointer to a pointer where the found object will be stored.
+ * @return true if the object is found and retrieved successfully, false otherwise.
+ */
 extern bool fld_get_object(fld_object *object, const char *key, fld_object **out_object);
+
+extern fld_object *fld_get_field(fld_object *object, const char *key);
+extern fld_object *fld_get_field_by_path(fld_object *object, const char *path);
 
 extern bool fld_has_field(fld_object *object, const char *key);
 extern fld_value_type fld_get_type(fld_object *object, const char *key);
 extern bool fld_get_array_size(fld_object *object, const char *key, size_t *out_size);
 
+/**
+ * @brief Converts a fld_string_view to a null-terminated C string.
+ *
+ * This function takes a fld_string_view and copies its content into the provided buffer,
+ * ensuring that the result is null-terminated. The buffer must be large enough to hold
+ * the string view content and the null terminator.
+ *
+ * @param str_view The fld_string_view to be converted.
+ * @param buffer The buffer where the null-terminated C string will be stored.
+ * @param buffer_size The size of the buffer.
+ * @return true if the conversion was successful and the buffer was large enough,
+ *         false if the buffer was too small to hold the string view content and the null terminator.
+ */
 extern bool fld_string_view_to_cstr(fld_string_view str_view, char *buffer, size_t buffer_size);
+
+/**
+ * @brief Compares a fld_string_view with a C-style string for equality.
+ * 
+ * This function checks if the given fld_string_view is equal to the provided
+ * null-terminated C-style string. The comparison is case-sensitive.
+ * 
+ * @param str_view The fld_string_view to compare.
+ * @param cstr The null-terminated C-style string to compare against.
+ * @return true if the fld_string_view and the C-style string are equal, false otherwise.
+ */
 extern bool fld_string_view_eq(fld_string_view str_view, const char* cstr);
 
 extern size_t fld_estimate_memory(const char *source);
@@ -272,6 +356,7 @@ extern size_t fld_estimate_memory(const char *source);
  *         are no more objects.
  */
 extern fld_object *fld_iter_next(fld_iterator *iter);
+extern bool fld_iter_get_path(fld_iterator *iter, char *buffer, size_t buffer_size);
 
 /**
  * @brief Initializes a field iterator.
@@ -283,16 +368,33 @@ extern fld_object *fld_iter_next(fld_iterator *iter);
  * @param type Type of the iterator.
  */
 static inline void fld_iter_init(fld_iterator *iter, fld_object *root, fld_iter_type type) {
-    iter->current = root;
-    iter->parent = NULL;
     iter->type = type;
-    iter->depth = 0;
+    iter->current = root;
+    iter->depth = -1;
+    iter->parent = NULL;
 }
 
+/**
+ * @brief Retrieves the last error encountered by the parser.
+ *
+ * This function returns the last error that was recorded in the given parser.
+ *
+ * @param parser A pointer to the fld_parser structure.
+ * @return The last error encountered by the parser.
+ */
 static inline fld_error fld_get_last_error(fld_parser *parser) {
     return parser->last_error;
 }
 
+/**
+ * @brief Converts a field error code to a human-readable string.
+ *
+ * This function takes a field error code and returns a constant string
+ * describing the error. It is useful for logging and debugging purposes.
+ *
+ * @param code The field error code to convert.
+ * @return A constant string describing the error.
+ */
 static inline const char *fld_error_string(fld_error_code code) {
     switch (code) {
         case FLD_ERROR_NONE: return "No error";
@@ -316,14 +418,15 @@ static inline const char *fld_error_string(fld_error_code code) {
 #ifdef FLD_PARSER_IMPLEMENTATION
 
 // Forward declarations
-static fld_value *_parse_object(fld_parser *parser);
-static fld_value *_parse_value(fld_parser *parser);
-static fld_object *_parse_field(fld_parser *parser);
+static fld_value *_parse_object(fld_parser *parser, fld_object *parent);
+static fld_value *_parse_value(fld_parser *parser, fld_object *parent);
+static fld_object *_parse_field(fld_parser *parser, fld_object *parent);
 
 static inline void _bump_init(fld_bump_allocator *alloc, void *memory, size_t size) {
     alloc->start = (uint8_t*)memory;
     alloc->current = alloc->start;
     alloc->end = alloc->start + size;
+    // TODO: maybe zero out the whole block of memory?
 }
 
 static inline uintptr_t _align_up(uintptr_t addr, size_t align) {
@@ -649,7 +752,7 @@ static bool _parser_expect(fld_parser *parser, fld_token_type type, fld_error_co
     return true;
 }
 
-static fld_object *_parse_object_fields(fld_parser *parser) {
+static fld_object *_parse_object_fields(fld_parser *parser, fld_object *parent) {
     // Skip the opening brace
     _parser_advance(parser);
 
@@ -671,14 +774,10 @@ static fld_object *_parse_object_fields(fld_parser *parser) {
         }
 
         // Parse a field
-        fld_object *field = _parse_field(parser);
+        fld_object *field = _parse_field(parser, parent);
         if (!field) {
             return NULL;
         }
-
-        // Initialize field's relationships
-        field->parent = NULL;
-        field->next = NULL;
 
         // Add to the linked list
         if (!first_field) {
@@ -699,10 +798,11 @@ static fld_object *_parse_object_fields(fld_parser *parser) {
         return NULL;
     }
 
+    last_field->next = NULL;
     return first_field;
 }
 
-static fld_value *_parse_object(fld_parser *parser) {
+static fld_value *_parse_object(fld_parser *parser, fld_object *parent) {
     // Allocate and init value
     fld_value *value = (fld_value*)_bump_alloc(&parser->allocator, sizeof(fld_value), ALIGNOF(fld_value));
     if (!value) {
@@ -715,16 +815,9 @@ static fld_value *_parse_object(fld_parser *parser) {
     value->type = FLD_VALUE_OBJECT;
 
     // Parse the object's fields
-    value->object = _parse_object_fields(parser);
+    value->as.object = _parse_object_fields(parser, parent);
     if (parser->last_error.code != FLD_ERROR_NONE) {
         return NULL;
-    }
-
-    // Set parent relationships for all fields
-    fld_object *field = value->object;
-    while (field) {
-        field->parent = NULL;
-        field = field->next;
     }
 
     return value;
@@ -750,7 +843,7 @@ static size_t _get_type_alignment(fld_value_type type) {
     }
 }
 
-static fld_value *_parse_array(fld_parser *parser) {
+static fld_value *_parse_array(fld_parser *parser, fld_object *parent) {
     // Save lexer state for rewinding
     char* start_pos = parser->lexer.current;
     int start_line = parser->lexer.line;
@@ -767,14 +860,14 @@ static fld_value *_parse_array(fld_parser *parser) {
             return NULL;
         }
         array->type = FLD_VALUE_ARRAY;
-        array->array.count = 0;
-        array->array.items = NULL;
-        array->array.type = FLD_VALUE_EMPTY;
+        array->as.array.count = 0;
+        array->as.array.items = NULL;
+        array->as.array.type = FLD_VALUE_EMPTY;
         return array;
     }
 
     // Parse first value to get type
-    fld_value *first_value = _parse_value(parser);
+    fld_value *first_value = _parse_value(parser, parent);
     if (!first_value) return NULL;
 
     // Validate array element type - no nested arrays or objects allowed
@@ -814,45 +907,45 @@ static fld_value *_parse_array(fld_parser *parser) {
     }
 
     array->type = FLD_VALUE_ARRAY;
-    array->array.type = first_value->type;
-    array->array.count = count;
+    array->as.array.type = first_value->type;
+    array->as.array.count = count;
 
     // Allocate storage for all items
-    size_t item_size = _get_type_size(array->array.type);
-    size_t item_align = _get_type_alignment(array->array.type);
+    size_t item_size = _get_type_size(array->as.array.type);
+    size_t item_align = _get_type_alignment(array->as.array.type);
 
     void* items = _bump_alloc(&parser->allocator, item_size * count, item_align);
     if (!items) {
         _parser_error(parser, FLD_ERROR_OUT_OF_MEMORY);
         return NULL;
     }
-    array->array.items = items;
+    array->as.array.items = items;
 
     // Second pass - parse and store values
     char* current = (char*)items;
 
     for (size_t i = 0; i < count; i++) {
-        fld_value *value = _parse_value(parser);
+        fld_value *value = _parse_value(parser, parent);
         if (!value) return NULL;
 
-        if (value->type != array->array.type) {
+        if (value->type != array->as.array.type) {
             _parser_error(parser, FLD_ERROR_ARRAY_TYPE_MISMATCH);
             return NULL;
         }
 
         // Copy value based on type
-        switch (array->array.type) {
+        switch (array->as.array.type) {
             case FLD_VALUE_STRING:
-                *((fld_string_view*)current) = value->string;
+                *((fld_string_view*)current) = value->as.string;
                 break;
             case FLD_VALUE_INT:
-                *((int*)current) = value->integer;
+                *((int*)current) = value->as.integer;
                 break;
             case FLD_VALUE_FLOAT:
-                *((float*)current) = value->float_val;
+                *((float*)current) = value->as.float_val;
                 break;
             case FLD_VALUE_BOOL:
-                *((bool*)current) = value->boolean;
+                *((bool*)current) = value->as.boolean;
                 break;
             default:
                 _parser_error(parser, FLD_ERROR_ARRAY_TYPE_MISMATCH);
@@ -873,13 +966,13 @@ static fld_value *_parse_array(fld_parser *parser) {
     return array;
 }
 
-static fld_value *_parse_value(fld_parser *parser) {
+static fld_value *_parse_value(fld_parser *parser, fld_object *parent) {
     // For objects and arrays we'll just use their appropriate parse functions
     if (parser->current->type == TOKEN_BRACE_LEFT) {
-        return _parse_object(parser);
+        return _parse_object(parser, parent);
     }
     if (parser->current->type == TOKEN_BRACKET_LEFT) {
-        return _parse_array(parser);
+        return _parse_array(parser, parent);
     }
     
     // For primitive types allocate and init a value
@@ -898,7 +991,7 @@ static fld_value *_parse_value(fld_parser *parser) {
             if (parser->current->value.string.length > 0 &&
                 parser->current->value.string.start != NULL) {
                 value->type = FLD_VALUE_STRING;
-                value->string = parser->current->value.string;
+                value->as.string = parser->current->value.string;
                 _parser_advance(parser);
                 return value;
             }
@@ -908,21 +1001,21 @@ static fld_value *_parse_value(fld_parser *parser) {
 
         case TOKEN_INT: {
             value->type = FLD_VALUE_INT;
-            value->integer = parser->current->value.integer;
+            value->as.integer = parser->current->value.integer;
             _parser_advance(parser);
             return value;
         }
 
         case TOKEN_FLOAT: {
             value->type = FLD_VALUE_FLOAT;
-            value->float_val = parser->current->value.float_val;
+            value->as.float_val = parser->current->value.float_val;
             _parser_advance(parser);
             return value;
         }
 
         case TOKEN_BOOL: {
             value->type = FLD_VALUE_BOOL;
-            value->boolean = parser->current->value.boolean;
+            value->as.boolean = parser->current->value.boolean;
             _parser_advance(parser);
             return value;
         }
@@ -937,7 +1030,7 @@ static fld_value *_parse_value(fld_parser *parser) {
     return NULL;
 }
 
-static fld_object *_parse_field(fld_parser *parser) {
+static fld_object *_parse_field(fld_parser *parser, fld_object *parent) {
     // Allocate new object
     fld_object *obj = (fld_object*)_bump_alloc(&parser->allocator, sizeof(fld_object), ALIGNOF(fld_object));
     if (!obj) {
@@ -945,9 +1038,11 @@ static fld_object *_parse_field(fld_parser *parser) {
         return NULL;
     }
 
+    memset(obj, 0, sizeof(fld_object));
+
     // Null initialize links
     obj->next = NULL;
-    obj->parent = NULL;
+    obj->parent = parent;
 
     // Store the key
     obj->key = parser->current->value.string;
@@ -962,7 +1057,7 @@ static fld_object *_parse_field(fld_parser *parser) {
     }
 
     // Now parse the value
-    fld_value *value = _parse_value(parser);
+    fld_value *value = _parse_value(parser, obj);
     if (!value) {
         // TODO: error?
         return NULL;
@@ -1032,7 +1127,8 @@ bool fld_parse(fld_parser *parser, const char *source, void *memory, size_t size
             return false;
         }
 
-        fld_object *field = _parse_field(parser);
+        // Parse field -- top level has no parent (like batman)
+        fld_object *field = _parse_field(parser, NULL);
         if (!field) {
             // TODO: error?
             return false;
@@ -1094,7 +1190,7 @@ fld_object *fld_get_field_by_path(fld_object *object, const char *path) {
             if (field->value.type != FLD_VALUE_OBJECT) {
                 return NULL;
             }
-            current = field->value.object;
+            current = field->value.as.object;
         } else {
             // Last token - this is our target field
             fld_object *result = field;
@@ -1111,8 +1207,8 @@ bool fld_get_str_view(fld_object *object, const char *key, fld_string_view *str_
     if (!field || field->value.type != FLD_VALUE_STRING) {
         return false;
     }
-    str_view->start = field->value.string.start;
-    str_view->length = field->value.string.length;
+    str_view->start = field->value.as.string.start;
+    str_view->length = field->value.as.string.length;
     return true;
 }
 
@@ -1145,7 +1241,7 @@ bool fld_get_int(fld_object *object, const char *key, int *out_value) {
     if (!field || field->value.type != FLD_VALUE_INT) {
         return false;
     }
-    *out_value = field->value.integer;
+    *out_value = field->value.as.integer;
     return true;
 }
 
@@ -1154,7 +1250,7 @@ bool fld_get_float(fld_object *object, const char *key, float *out_value) {
     if (!field || field->value.type != FLD_VALUE_FLOAT) {
         return false;
     }
-    *out_value = field->value.float_val;
+    *out_value = field->value.as.float_val;
     return true;
 }
 
@@ -1163,7 +1259,7 @@ bool fld_get_bool(fld_object *object, const char *key, bool *out_value) {
     if (!field || field->value.type != FLD_VALUE_BOOL) {
         return false;
     }
-    *out_value = field->value.boolean;
+    *out_value = field->value.as.boolean;
     return true;
 }
 
@@ -1172,9 +1268,9 @@ bool fld_get_array(fld_object *object, const char *key, fld_value_type *out_type
     if (!field || field->value.type != FLD_VALUE_ARRAY) {
         return false;
     }
-    *out_type = field->value.array.type;
-    *out_items = field->value.array.items;
-    *out_count = field->value.array.count;
+    *out_type = field->value.as.array.type;
+    *out_items = field->value.as.array.items;
+    *out_count = field->value.as.array.count;
     return true;
 }
 
@@ -1183,7 +1279,7 @@ bool fld_get_object(fld_object *object, const char *key, fld_object **out_object
     if (!field || field->value.type != FLD_VALUE_OBJECT) {
         return false;
     }
-    *out_object = field->value.object;
+    *out_object = field->value.as.object;
     return true;
 }
 
@@ -1204,7 +1300,7 @@ bool fld_get_array_size(fld_object *object, const char *key, size_t *out_size) {
     if (!field || field->value.type != FLD_VALUE_ARRAY) {
         return false;
     }
-    *out_size = field->value.array.count;
+    *out_size = field->value.as.array.count;
     return true;
 }
 
@@ -1229,21 +1325,27 @@ size_t fld_estimate_memory(const char *source) {
 fld_object *fld_iter_next(fld_iterator *iter) {
     if (!iter->current) return NULL;
 
-    fld_object *result = iter->current;
+    // For the initial case
+    // Alternatively, I could create a pre_root in the struct
+    // with its .next = root...
+    if (iter->depth == -1) {
+        iter->depth = 0;
+        return iter->current;
+    }
 
     // For recursive, try to go deeper if we have an object
-    if (iter->type == FLD_ITER_RECURSIVE && result->value.type == FLD_VALUE_OBJECT && result->value.object) {
+    if (iter->type == FLD_ITER_RECURSIVE && iter->current->value.type == FLD_VALUE_OBJECT && iter->current->value.as.object) {
         // Set current as parent and descend
-        iter->parent = result;
-        iter->current = result->value.object;
+        iter->parent = iter->current;
+        iter->current = iter->current->value.as.object;
         iter->depth++;
-        return result;
+        return iter->current;
     }
 
     // Move to the next sibling
     if (iter->current->next) {
         iter->current = iter->current->next;
-        return result;
+        return iter->current;
     }
 
     // For recursive iter, go back up if we can't move to siblings
@@ -1251,12 +1353,48 @@ fld_object *fld_iter_next(fld_iterator *iter) {
         iter->current = iter->parent->next;
         iter->parent = iter->parent->parent;
         iter->depth--;
-        return result;
+        return iter->current;
     }
 
     // No more nodes to visit
     iter->current = NULL;
-    return result;
+    return NULL;  // Return NULL instead of the last node
+}
+
+bool fld_iter_get_path(fld_iterator *iter, char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size <= 0) return false;
+
+    buffer[0] = '\0';
+    size_t pos = 0;
+
+    // Build path from root to current
+    fld_object *obj = iter->current;
+    // Max depth 32, right now
+    fld_object *parents[32];
+    int depth = 0;
+
+    // Collect parents
+    while (obj && depth < 32) {
+        parents[depth++] = obj;
+        obj = obj->parent;
+    }
+
+    // Build path from root to leaf
+    for (int i = depth - 1; i >= 0; --i) {
+        // Add separator, except for first element
+        if (buffer[0] != '\0') {
+            if (pos + 1 >= buffer_size) return false;
+            buffer[pos++] = '.';
+        }
+        // Add field name
+        size_t name_len = parents[i]->key.length;
+        if (pos + name_len >= buffer_size) return false;
+
+        memcpy(buffer + pos, parents[i]->key.start, name_len);
+        pos += name_len;
+        buffer[pos] = '\0';
+    }
+    return true;
 }
 
 #endif // FLD_PARSER_IMPLEMENTATION

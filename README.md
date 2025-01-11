@@ -13,6 +13,8 @@ A lightweight, header-only configuration parser for the `.fld` format with an ef
 - Single-line compatibility unlike YAML, making it ideal for command-line tools and simple configurations
 - Strongly typed arrays that enforce consistent value types
 - Support for both single-line and block comments
+- Iterator support for traversing fields
+- String view utilities for efficient string operations
 
 ## File Format
 
@@ -154,19 +156,39 @@ fld_parser parser;
 // Parse the input
 if (!fld_parse(&parser, input_string, memory, sizeof(memory))) {
     // Handle parsing error
+    fld_error error = fld_get_last_error(&parser);
+    printf("Error at line %d, column %d: %s\n", 
+           error.line, 
+           error.column, 
+           fld_error_string(error.code));
 }
 ```
 
 ### Accessing Values
 
-The parser provides type-specific functions to access values:
+The parser provides several methods to access and validate values:
 
 ```c
-// Get a string view
+// Check if a field exists
+if (fld_has_field(parser.root, "settings.theme")) {
+    // Field exists
+}
+
+// Get a string value (two methods available)
 fld_string_view str_view;
-if (fld_get_string(parser.root, "settings.theme", &str_view)) {
+if (fld_get_str_view(parser.root, "settings.theme", &str_view)) {
     printf("Theme: %.*s\n", str_view.length, str_view.start);
 }
+
+char theme_buffer[256];
+if (fld_get_cstr(parser.root, "settings.theme", theme_buffer, sizeof(theme_buffer))) {
+    printf("Theme: %s\n", theme_buffer);
+}
+
+// String view utilities
+char buffer[256];
+fld_string_view_to_cstr(str_view, buffer, sizeof(buffer));
+bool matches = fld_string_view_eq(str_view, "expected_string");
 
 // Get an integer value
 int int_val;
@@ -193,6 +215,12 @@ size_t array_count;
 if (fld_get_array(parser.root, "settings.another_array", &array_type, &array, &array_count)) {
     // Handle array based on array_type
 }
+
+// Get array information
+size_t array_size;
+if (fld_get_array_size(parser.root, "settings.colors", &array_size)) {
+    printf("Array has %zu items\n", array_size);
+}
 ```
 
 ### Accessing Nested Values
@@ -207,13 +235,60 @@ The parser uses a bump allocator for efficient memory management. You need to pr
 
 ```c
 char memory[1024 * 8];  // Adjust size based on your needs
+
+// You can also estimate required memory
+size_t needed = fld_estimate_memory(source_string);
+void* memory = malloc(needed);  // Or other allocation method
 ```
 
 The parser will use this memory for all allocations during parsing. No manual memory management is required.
 
+### Iterating Over Fields
+
+The parser supports two types of iteration:
+
+```c
+// Initialize iterator for flat iteration (current level only)
+fld_iterator iter;
+fld_iter_init(&iter, parser.root, FLD_ITER_FIELDS);
+
+// Or for recursive iteration (including nested fields)
+fld_iter_init(&iter, parser.root, FLD_ITER_RECURSIVE);
+
+// Iterate over fields
+fld_object *field;
+while ((field = fld_iter_next(&iter))) {
+    // Access field properties
+    printf("Field: %.*s\n", field->key.length, field->key.start);
+}
+```
+
 ## Error Handling
 
 All getter functions return a boolean indicating success or failure. Always check the return value before using the retrieved data.
+
+The parser provides comprehensive error handling:
+
+```c
+// After parsing
+fld_error error = fld_get_last_error(&parser);
+if (error.code != FLD_ERROR_NONE) {
+    printf("Error at line %d, column %d: %s\n",
+           error.line,
+           error.column,
+           fld_error_string(error.code));
+}
+```
+
+Error codes include:
+- `FLD_ERROR_NONE`: No error
+- `FLD_ERROR_OUT_OF_MEMORY`: Memory allocation failed
+- `FLD_ERROR_UNEXPECTED_TOKEN`: Syntax error
+- `FLD_ERROR_INVALID_NUMBER`: Invalid number format
+- `FLD_ERROR_INSUFFICIENT_MEMORY`: Provided memory buffer too small
+- `FLD_ERROR_ARRAY_TYPE_MISMATCH`: Array contains mixed types
+- `FLD_ERROR_ARRAY_NOT_SUPPORTED_TYPE`: Unsupported array element type
+- `FLD_ERROR_ARRAY_TOO_MANY_ITEMS`: Array exceeds maximum size
 
 ## Building
 
