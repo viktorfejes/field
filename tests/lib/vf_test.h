@@ -1,8 +1,10 @@
 /*
-*   vf_test - v0.21
+*   vf_test - v0.3
 *   Header-only tiny test library for C/C++.
 *
 *   RECENT CHANGES:
+*       0.3     (2025-01-11)    Added more macros;
+*                               Implemented cleanup for tests that gets called after tests are run;
 *       0.21    (2024-06-24)    ;
 *       0.2     (2024-06-21)    Added suite to TEST;
 *       0.1     (2024-06-20)    Finalized the implementation;
@@ -209,19 +211,98 @@ static vf_test_state* vf_test_get_state(void) {
         if ((expected) != (actual)) { \
             char message[VF_MAX_FAIL_MSG_BUFFER]; \
             snprintf(message, sizeof(message), \
-            "Expected values to be equal. (expected: %s (%d), actual: %s (%d))", \
+            "Expected integer values to be equal. (expected: %s (%d), actual: %s (%d))", \
             #expected, (expected), #actual, (actual)); \
             _vf_log_failure(__FILE__, __LINE__, message); \
             return false; \
         } \
     } while (0)
-#define EXPECT_NE_INT()
+    
+#define EXPECT_NE_INT(expected, actual) do { \
+        if ((expected) == (actual)) { \
+            char message[VF_MAX_FAIL_MSG_BUFFER]; \
+            snprintf(message, sizeof(message), \
+            "Expected integer values to be NOT equal. (expected: %s (%d), actual: %s (%d))", \
+            #expected, (expected), #actual, (actual)); \
+            _vf_log_failure(__FILE__, __LINE__, message); \
+            return false; \
+        } \
+    } while (0)
 
-#define EXPECT_EQ_FLOAT()
-#define EXPECT_NE_FLOAT()
+#define EXPECT_EQ_FLOAT(expected, actual, epsilon) do { \
+        float diff = (expected) - (actual); \
+        if (diff > epsilon || diff < -epsilon) { \
+            char message[VF_MAX_FAIL_MSG_BUFFER]; \
+            snprintf(message, sizeof(message), \
+            "Expected float values to be equal within epsilon %f. (expected: %s (%f), actual: %s (%f))", \
+            epsilon, #expected, (float)(expected), #actual, (float)(actual)); \
+            _vf_log_failure(__FILE__, __LINE__, message); \
+            return false; \
+        } \
+    } while (0)
 
-#define EXPECT_EQ_STR()
-#define EXPECT_NE_STR()
+#define EXPECT_NE_FLOAT(expected, actual, epsilon) do { \
+        float diff = (expected) - (actual); \
+        if (diff <= epsilon && diff >= -epsilon) { \
+            char message[VF_MAX_FAIL_MSG_BUFFER]; \
+            snprintf(message, sizeof(message), \
+            "Expected float values to NOT be equal within epsilon %f. (expected: %s (%f), actual: %s (%f))", \
+            epsilon, #expected, (float)(expected), #actual, (float)(actual)); \
+            _vf_log_failure(__FILE__, __LINE__, message); \
+            return false; \
+        } \
+    } while (0)
+
+#define EXPECT_EQ_STR(expected, actual) do { \
+        if (expected == NULL && actual == NULL) break; \
+        if (expected == NULL || actual == NULL || strcmp(expected, actual) != 0) { \
+            char message[VF_MAX_FAIL_MSG_BUFFER]; \
+            snprintf(message, sizeof(message), \
+            "Expected strings to be equal. (expected: %s \"%s\", actual: %s \"%s\")", \
+            #expected, (expected ? expected : "NULL"), \
+            #actual, (actual ? actual : "NULL")); \
+            _vf_log_failure(__FILE__, __LINE__, message); \
+            return false; \
+        } \
+    } while (0)
+
+#define EXPECT_NE_STR(expected, actual) do { \
+        if (expected == NULL && actual == NULL) { \
+            char message[VF_MAX_FAIL_MSG_BUFFER]; \
+            snprintf(message, sizeof(message), \
+            "Expected strings to NOT be equal. Both are NULL"); \
+            _vf_log_failure(__FILE__, __LINE__, message); \
+            return false; \
+        } \
+        if ((expected != NULL && actual != NULL) && strcmp(expected, actual) == 0) { \
+            char message[VF_MAX_FAIL_MSG_BUFFER]; \
+            snprintf(message, sizeof(message), \
+            "Expected strings to NOT be equal. (expected: %s \"%s\", actual: %s \"%s\")", \
+            #expected, expected, #actual, actual); \
+            _vf_log_failure(__FILE__, __LINE__, message); \
+            return false; \
+        } \
+    } while (0)
+
+#define EXPECT_NULL(ptr) do { \
+        if ((ptr) != NULL) { \
+            char message[VF_MAX_FAIL_MSG_BUFFER]; \
+            snprintf(message, sizeof(message), \
+            "Expected %s to be NULL, but it wasn't", #ptr); \
+            _vf_log_failure(__FILE__, __LINE__, message); \
+            return false; \
+        } \
+    } while (0)
+
+#define EXPECT_NOT_NULL(ptr) do { \
+        if ((ptr) == NULL) { \
+            char message[VF_MAX_FAIL_MSG_BUFFER]; \
+            snprintf(message, sizeof(message), \
+            "Expected %s to NOT be NULL, but it was", #ptr); \
+            _vf_log_failure(__FILE__, __LINE__, message); \
+            return false; \
+        } \
+    } while (0)
 
 #define FAIL(...)
 #define SUCCEED(...)
@@ -249,6 +330,8 @@ static vf_test_state* vf_test_get_state(void) {
 #if VF_PLATFORM_WINDOWS
 static double timer_frequency;
 #endif
+
+static void _cleanup_tests(void);
 
 static double vf_test_platform_get_abs_time(void) {
     #if VF_PLATFORM_WINDOWS
@@ -338,8 +421,6 @@ void _vf_log_failure(const char* file, size_t line, const char* message) {
     vf_test_get_state()->log_count++;
 }
 
-// static void vf_log_test_failure(vf_test_case* test, size_t line, const char* file);
-
 void _vf_run_all_tests(const char* file) {
     // Get frequency for timer on windows by initializing
     // our static frequency variable.
@@ -417,9 +498,20 @@ void _vf_run_all_tests(const char* file) {
                 vf_test_get_state()->logs[i].message,
                 ascii_format[0]);
         }
-
     }
 
+    _cleanup_tests();
+}
+
+static void _cleanup_tests(void) {
+    vf_test_case *current = vf_test_get_state()->test_head;
+    while (current) {
+        vf_test_case *next = current->next;
+        free(current);
+        current = next;
+    }
+    vf_test_get_state()->test_head = NULL;
+    vf_test_get_state()->test_tail = NULL;
 }
 
 #endif // VF_TEST_IMPLEMENTATION

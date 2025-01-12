@@ -1,8 +1,10 @@
 /*
-*   fld_parser - v0.41
+*   fld_parser - v0.5
 *   Header-only library for parsing configuration files in the FLD format.
 *
 *   RECENT CHANGES:
+*       0.5     (2025-01-11)    Removed stdlib.h by implementing _fast_atof and _fast_atoi;
+*                               Fixed number handling to handle negative numbers and + prefixed positive numbers;
 *       0.41    (2025-01-10)    Fixed some bugs where proper parent relationship was not established;
 *                               Updated readme with new functions and explanations;
 *                               Added a function to be able to get path from iterator;
@@ -47,10 +49,11 @@
 *       - [x] A bit more testing...
 *       - [ ] Run some tests to see how close the
 *             memory estimating function gets.
-*       - [ ] Remove stdlib.h include by writing own
+*       - [x] Remove stdlib.h include by writing own
 *             int and float parser.
 *       - [ ] Full documentation of public API
 *       - [ ] Change key to path in getters to make more sense
+*       - [ ] Add digit checking for lexer's number handling
 *
  */
 
@@ -58,7 +61,6 @@
 #define FLD_PARSER_H
 
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 
@@ -78,6 +80,7 @@ typedef enum fld_value_type {
     FLD_VALUE_FLOAT,
     FLD_VALUE_BOOL,
     FLD_VALUE_ARRAY,
+    FLD_VALUE_VEC3,
     FLD_VALUE_OBJECT,
 } fld_value_type;
 
@@ -94,6 +97,9 @@ typedef struct fld_value {
             void *items;
         } array;
         struct fld_object *object;
+        struct {
+            float x, y, z;
+        } vec3;
     } as;
 } fld_value;
 
@@ -481,6 +487,31 @@ static inline bool _is_alpha(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
+// Only handles only digit positive numbers
+static int _fast_atoi(const char *str) {
+    int res = *str - '0';
+    ++str;
+    while (*str) {
+        res = res * 10 - (*str++ - '0');
+    }
+    return res;
+}
+
+// Only sign and digits, no white-spaces
+static double _fast_atof(const char* str) {
+    double value = 0;
+    while (*str != '.') {
+        value = value * 10 + (*str++ - '0');
+        if (!*str) return value;  // No decimal point
+    }
+    double factor = 0.1;
+    while (*++str) {
+        value += (*str - '0') * factor;
+        factor *= 0.1;
+    }
+    return value;
+}
+
 static bool _lexer_is_at_end(fld_lexer *lexer) {
     return *lexer->current == '\0';
 }
@@ -540,42 +571,44 @@ static fld_token *_lexer_handle_string(fld_parser *parser, fld_lexer *lexer) {
     return token;
 }
 
-static fld_token *_lexer_handle_number(fld_parser *parser, fld_lexer *lexer) {
-    bool is_float = false;
+static fld_token *_lexer_handle_number(fld_parser *parser, fld_lexer *lexer, bool is_negative) {
+    // TODO: Add error for too long/large numbers
+    
+    // DECIMAL_DIG is 21 but let's do 24 just to be safe
+    char num_str[24];
+    char *num_ptr = num_str;
+
+    // Skip the sign in input but don't copy it
+    if (*lexer->current == '+' || *lexer->current == '-') {
+        _lexer_advance(lexer);
+    }
+
+    // Conver bool to 1/-1 for multiplication without branching
+    int sign = 1 - (2 * is_negative);
+    fld_token *token;
 
     // As long as we are encountering digits, let's advance
     while (_is_digit(_lexer_peek(lexer))) {
-        _lexer_advance(lexer);
+        *num_ptr++ = _lexer_advance(lexer);
     }
 
     // Look for decimal point followed by numbers
     if (_lexer_peek(lexer) == '.' && _is_digit(_lexer_peek_next(lexer))) {
-        is_float = true;
         // Consume the '.'
-        _lexer_advance(lexer);
+        *num_ptr++ = _lexer_advance(lexer);
 
         // Continue with the remaining digits
         while (_is_digit(_lexer_peek(lexer))) {
-            _lexer_advance(lexer);
+            *num_ptr++ = _lexer_advance(lexer);
         }
-    }
-
-    // Create the appropriate numeric token
-    fld_token *token;
-    int length = lexer->current - lexer->start;
-    
-    // FLT_DECIMAL_DIG is 9 but let's do 16 just to be safe
-    // no dynamic allocations needed...
-    char num_str[16];
-    strncpy(num_str, lexer->start, length);
-    num_str[length] = '\0';
-
-    if (is_float) {
+        *num_ptr = '\0';
+        
         token = _token_create(parser, TOKEN_FLOAT, lexer->line, lexer->column);
-        token->value.float_val = atof(num_str);
+        token->value.float_val = _fast_atof(num_str) * sign;
     } else {
+        *num_ptr = '\0';
         token = _token_create(parser, TOKEN_INT, lexer->line, lexer->column);
-        token->value.integer = atoi(num_str);
+        token->value.integer = _fast_atoi(num_str) * sign;
     }
 
     return token;
@@ -675,10 +708,11 @@ static fld_token *_lexer_scan_token(fld_parser *parser) {
     if (c == '"') return _lexer_handle_string(parser, lexer);
 
     // Handle numbers
-    if (_is_digit(c)) {
+    if (_is_digit(c) || (c == '-' && _is_digit(_lexer_peek(lexer)))) {
         // Back up so number() sees the first digit
         lexer->current--;
-        return _lexer_handle_number(parser, lexer);
+        bool is_negative = (*lexer->current == '-');
+        return _lexer_handle_number(parser, lexer, is_negative);
     }
 
     // Handle key and keywords
