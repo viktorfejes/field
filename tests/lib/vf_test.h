@@ -71,6 +71,7 @@ typedef struct vf_test_case {
 
 #define VF_MAX_LOGS 100
 #define VF_MAX_FAIL_MSG_BUFFER 256
+#define VF_FLOAT_EPSILON 1e-5f
 
 typedef struct vf_test_log {
     vf_test_case* test;
@@ -229,25 +230,25 @@ static vf_test_state* vf_test_get_state(void) {
         } \
     } while (0)
 
-#define EXPECT_EQ_FLOAT(expected, actual, epsilon) do { \
+#define EXPECT_EQ_FLOAT(expected, actual) do { \
         float diff = (expected) - (actual); \
-        if (diff > epsilon || diff < -epsilon) { \
+        if (diff > VF_FLOAT_EPSILON || diff < -VF_FLOAT_EPSILON) { \
             char message[VF_MAX_FAIL_MSG_BUFFER]; \
             snprintf(message, sizeof(message), \
-            "Expected float values to be equal within epsilon %f. (expected: %s (%f), actual: %s (%f))", \
-            epsilon, #expected, (float)(expected), #actual, (float)(actual)); \
+            "Expected float values to be equal. (expected: %s (%f), actual: %s (%f))", \
+            #expected, (float)(expected), #actual, (float)(actual)); \
             _vf_log_failure(__FILE__, __LINE__, message); \
             return false; \
         } \
     } while (0)
 
-#define EXPECT_NE_FLOAT(expected, actual, epsilon) do { \
+#define EXPECT_NE_FLOAT(expected, actual) do { \
         float diff = (expected) - (actual); \
-        if (diff <= epsilon && diff >= -epsilon) { \
+        if (diff <= VF_FLOAT_EPSILON && diff >= -VF_FLOAT_EPSILON) { \
             char message[VF_MAX_FAIL_MSG_BUFFER]; \
             snprintf(message, sizeof(message), \
-            "Expected float values to NOT be equal within epsilon %f. (expected: %s (%f), actual: %s (%f))", \
-            epsilon, #expected, (float)(expected), #actual, (float)(actual)); \
+            "Expected float values to NOT be equal. (expected: %s (%f), actual: %s (%f))", \
+            #expected, (float)(expected), #actual, (float)(actual)); \
             _vf_log_failure(__FILE__, __LINE__, message); \
             return false; \
         } \

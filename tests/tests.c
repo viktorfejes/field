@@ -23,7 +23,9 @@ TEST(Parser, BasicPrimitives) {
         "string_val = \"test\";\n"
         "int_val = 42;\n"
         "float_val = 3.14;\n"
-        "bool_val = true;\n";
+        "bool_val = true;\n"
+        "negative_int = -2141;\n"
+        "negative_float = -3.14;\n";
     
     fld_parser parser = {0};
     void* memory = NULL;
@@ -51,7 +53,31 @@ TEST(Parser, BasicPrimitives) {
     bool bool_val;
     EXPECT_TRUE(fld_get_bool(parser.root, "bool_val", &bool_val));
     EXPECT_TRUE(bool_val);
+
+    // Test negative integer value
+    int neg_int;
+    EXPECT_TRUE(fld_get_int(parser.root, "negative_int", &neg_int));
+    EXPECT_EQ_INT(neg_int, -2141);
+
+    // Test negative float value
+    float neg_float;
+    EXPECT_TRUE(fld_get_float(parser.root, "negative_float", &neg_float));
+    EXPECT_EQ_FLOAT(neg_float, -3.14);
     
+    cleanup_parser(memory);
+    return true;
+}
+
+TEST(Parser, BigNumbers) {
+    const char* source = 
+        "big_int = 999999999999999;\n"
+        "big_float = 999999999.99999999999999;\n";
+    
+    fld_parser parser = {0};
+    void* memory = NULL;
+    
+    EXPECT_FALSE(setup_parser(&parser, source, &memory));
+
     cleanup_parser(memory);
     return true;
 }
@@ -72,7 +98,7 @@ TEST(Parser, NestedObjects) {
     // Test nested path access
     int val;
     EXPECT_TRUE(fld_get_int(parser.root, "outer.inner.value", &val));
-    EXPECT_EQ(val, 123);
+    EXPECT_EQ_INT(val, 123);
     
     // Test object getter
     fld_object* outer;

@@ -34,7 +34,7 @@ const char* example_config =
     "    notifications = {\n"
     "        enabled = true;\n"
     "        volume = 0.8;\n"
-    "        priorities = [-1, 2, 3, 5];\n"
+    "        priorities = [1, 2, -3, 5];\n"
     "    };\n"
     "};\n"
     "\n"

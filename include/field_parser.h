@@ -1,8 +1,10 @@
 /*
-*   fld_parser - v0.5
+*   fld_parser - v0.51
 *   Header-only library for parsing configuration files in the FLD format.
 *
 *   RECENT CHANGES:
+*       0.51    (2025-01-11)    Fixed a bug in the implementation of _fast_atoi;
+*                               Parser now errors out if a number is too big;
 *       0.5     (2025-01-11)    Removed stdlib.h by implementing _fast_atof and _fast_atoi;
 *                               Fixed number handling to handle negative numbers and + prefixed positive numbers;
 *       0.41    (2025-01-10)    Fixed some bugs where proper parent relationship was not established;
@@ -53,7 +55,7 @@
 *             int and float parser.
 *       - [ ] Full documentation of public API
 *       - [ ] Change key to path in getters to make more sense
-*       - [ ] Add digit checking for lexer's number handling
+*       - [x] Add digit checking for lexer's number handling
 *
  */
 
@@ -207,6 +209,7 @@ typedef struct {
 
 #define FLD_MAX_PATH_LENGTH 128
 #define FLD_MAX_ARRAY_ITEMS 128
+#define FLD_MAX_DIGITS 21
 
 /**
  * @brief Parses the given source using the specified parser.
@@ -314,6 +317,17 @@ extern bool fld_get_array(fld_object *object, const char *key, fld_value_type *o
  */
 extern bool fld_get_object(fld_object *object, const char *key, fld_object **out_object);
 
+/**
+ * @brief Retrieves an object based on a given key on the same level as given object.
+ *
+ * This function searches for an object within the given field object using the provided key.
+ * It only searches horizontally, staying at the same level, without going deeper.
+ *
+ * @param object The field object to search within.
+ * @param key The key to search for within the field object.
+ * @param out_object A pointer to a pointer where the found object will be stored.
+ * @return true if the object is found and retrieved successfully, false otherwise.
+ */
 extern fld_object *fld_get_field(fld_object *object, const char *key);
 extern fld_object *fld_get_field_by_path(fld_object *object, const char *path);
 
@@ -348,6 +362,15 @@ extern bool fld_string_view_to_cstr(fld_string_view str_view, char *buffer, size
  */
 extern bool fld_string_view_eq(fld_string_view str_view, const char* cstr);
 
+/**
+ * @brief Estimates the memory required to parse the given source string.
+ *
+ * This function analyzes the provided source string and returns the estimated
+ * amount of memory (in bytes) that would be required to parse it.
+ *
+ * @param source A pointer to the source string to be analyzed.
+ * @return The estimated memory size in bytes required for parsing the source string.
+ */
 extern size_t fld_estimate_memory(const char *source);
 
 /**
@@ -362,6 +385,19 @@ extern size_t fld_estimate_memory(const char *source);
  *         are no more objects.
  */
 extern fld_object *fld_iter_next(fld_iterator *iter);
+
+/**
+ * @brief Retrieves the path from the field iterator.
+ *
+ * This function extracts the path from the given field iterator and stores it
+ * in the provided buffer. The buffer size must be sufficient to hold the path.
+ *
+ * @param iter Pointer to the field iterator.
+ * @param buffer Pointer to the buffer where the path will be stored.
+ * @param buffer_size Size of the buffer.
+ * @return true if the path was successfully retrieved and stored in the buffer,
+ *         false otherwise.
+ */
 extern bool fld_iter_get_path(fld_iterator *iter, char *buffer, size_t buffer_size);
 
 /**
@@ -492,7 +528,7 @@ static int _fast_atoi(const char *str) {
     int res = *str - '0';
     ++str;
     while (*str) {
-        res = res * 10 - (*str++ - '0');
+        res = res * 10 + (*str++ - '0');
     }
     return res;
 }
@@ -574,9 +610,10 @@ static fld_token *_lexer_handle_string(fld_parser *parser, fld_lexer *lexer) {
 static fld_token *_lexer_handle_number(fld_parser *parser, fld_lexer *lexer, bool is_negative) {
     // TODO: Add error for too long/large numbers
     
-    // DECIMAL_DIG is 21 but let's do 24 just to be safe
-    char num_str[24];
+    // A bit larger than max digits for null terminator and safety
+    char num_str[FLD_MAX_DIGITS + 3];
     char *num_ptr = num_str;
+    uint8_t digit_count = 0;
 
     // Skip the sign in input but don't copy it
     if (*lexer->current == '+' || *lexer->current == '-') {
@@ -590,6 +627,7 @@ static fld_token *_lexer_handle_number(fld_parser *parser, fld_lexer *lexer, boo
     // As long as we are encountering digits, let's advance
     while (_is_digit(_lexer_peek(lexer))) {
         *num_ptr++ = _lexer_advance(lexer);
+        digit_count++;
     }
 
     // Look for decimal point followed by numbers
@@ -598,19 +636,35 @@ static fld_token *_lexer_handle_number(fld_parser *parser, fld_lexer *lexer, boo
         *num_ptr++ = _lexer_advance(lexer);
 
         // Continue with the remaining digits
-        while (_is_digit(_lexer_peek(lexer))) {
+        while (_is_digit(_lexer_peek(lexer)) && digit_count < FLD_MAX_DIGITS) {
             *num_ptr++ = _lexer_advance(lexer);
+            digit_count++;
         }
+
+        // Check if we hit the digit limit, and if we have more
+        if (_is_digit(_lexer_peek(lexer))) {
+            parser->last_error.code = FLD_ERROR_INVALID_NUMBER;
+            parser->last_error.line = lexer->line;
+            parser->last_error.column = lexer->column;
+            return _token_create(parser, TOKEN_ERROR, lexer->line, lexer->column);
+        }
+
         *num_ptr = '\0';
         
         token = _token_create(parser, TOKEN_FLOAT, lexer->line, lexer->column);
         token->value.float_val = _fast_atof(num_str) * sign;
     } else {
+        if (_is_digit(_lexer_peek(lexer))) {
+            parser->last_error.code = FLD_ERROR_INVALID_NUMBER;
+            parser->last_error.line = lexer->line;
+            parser->last_error.column = lexer->column;
+            return _token_create(parser, TOKEN_ERROR, lexer->line, lexer->column);
+        }
+
         *num_ptr = '\0';
         token = _token_create(parser, TOKEN_INT, lexer->line, lexer->column);
         token->value.integer = _fast_atoi(num_str) * sign;
     }
-
     return token;
 }
 
