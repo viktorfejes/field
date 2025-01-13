@@ -5,6 +5,7 @@
  * - Parsing primitive types (strings, numbers, booleans)
  * - Handling nested objects
  * - Working with arrays
+ * - Using vectors (vec2, vec3)
  * - Using iterators (both flat and recursive)
  * - Accessing fields via dot notation
  */
@@ -21,6 +22,7 @@ const char* example_config =
     "    age = 30;\n"
     "    email = \"john.doe@example.com\";\n"
     "    verified = true;\n"
+    "    avatar_scale = vec3(1.0, 1.0, 1.0);\n"
     "};\n"
     "\n"
     "/* Application settings:\n"
@@ -30,6 +32,7 @@ const char* example_config =
     "        mode = \"dark\";\n"
     "        colors = [\"#1a1a1a\", \"#ffffff\", \"#007acc\"];\n"
     "        opacity = -0.95;\n"
+    "        size = vec2(1920.0, 1080);\n"
     "    };\n"
     "    notifications = {\n"
     "        enabled = true;\n"
@@ -133,6 +136,20 @@ int main(void) {
     if (fld_get_array(parser.root, "settings.notifications.priorities", &type, &items, &count)) {
         print_array("Notification priorities", items, count, type);
     }
+
+    printf("\n2. Working with vectors:\n");
+    printf("-------------------------------\n");
+    
+    // Demonstrate vector access
+    float width, height;
+    if (fld_get_vec2(parser.root, "settings.theme.size", &width, &height)) {
+        printf("Theme window size: %.0fx%.0f\n", width, height);
+    }
+
+    float scale_x, scale_y, scale_z;
+    if (fld_get_vec3(parser.root, "user.avatar_scale", &scale_x, &scale_y, &scale_z)) {
+        printf("Avatar scale: %.1f, %.1f, %.1f\n", scale_x, scale_y, scale_z);
+    }
     
     printf("\n3. Using iterators:\n");
     printf("-------------------------------\n");
@@ -170,6 +187,24 @@ int main(void) {
                     printf(" = [%d items]", obj->value.as.array.count);
                     break;
                 }
+                case FLD_VALUE_VEC2:
+                    printf(" = vec2(%.1f, %.1f)", 
+                           obj->value.as.vec2.x, 
+                           obj->value.as.vec2.y);
+                    break;
+                case FLD_VALUE_VEC3:
+                    printf(" = vec3(%.1f, %.1f, %.1f)", 
+                           obj->value.as.vec3.x, 
+                           obj->value.as.vec3.y,
+                           obj->value.as.vec3.z);
+                    break;
+                case FLD_VALUE_VEC4:
+                    printf(" = vec4(%.1f, %.1f, %.1f, %.1f)", 
+                           obj->value.as.vec4.x, 
+                           obj->value.as.vec4.y,
+                           obj->value.as.vec4.z,
+                           obj->value.as.vec4.w);
+                    break;
                 case FLD_VALUE_OBJECT:
                     printf(" = {...}");
                     break;

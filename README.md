@@ -15,6 +15,7 @@ A lightweight, header-only configuration parser for the `.fld` format with an ef
 - Support for both single-line and block comments
 - Iterator support for traversing fields
 - String view utilities for efficient string operations
+- Vector types (vec2, vec3, vec4) with type safety
 
 ## File Format
 
@@ -48,6 +49,7 @@ settings = {
 - **Integers**: Whole numbers
 - **Floats**: Decimal numbers
 - **Booleans**: `true` or `false`
+- **Vectors**: 2D, 3D, and 4D float vectors
 - **Arrays**: Homogeneous collections of values (must contain elements of the same type)
 - **Structures**: Nested configuration blocks (can be nested to any depth)
 
@@ -58,25 +60,30 @@ The configuration can be formatted with newlines for readability:
 
 ```field
 // String fields
-username = "jane_doe";           // populated string value
-description = "";               // zero value for strings
+username = "jane_doe";      // populated string value
+description = "";           // zero value for strings
 
 /* User information block
    Contains demographic data */
-age = 30;                       // populated integer value
-login_count = 0;               // zero value for integers
+age = 30;               // populated integer value
+login_count = 0;        // zero value for integers
 
 // Float fields
-height = 1.75;                  // populated float value
-progress = 0.0;                // zero value for floats
+height = 1.75;      // populated float value
+progress = 0.0;     // zero value for floats
+
+// Vector fields
+position = vec2(100.0, 200.0);          // 2D vector
+scale = vec3(1.0, 1.0, 1.0);            // 3D vector
+color = vec4(1.0, 0.0, 0.0, 1.0);       // 4D vector
 
 // Boolean fields
-is_active = true;               // populated boolean value
-is_verified = false;           // zero value for booleans
+is_active = true;           // populated boolean value
+is_verified = false;        // zero value for booleans
 
 // Array fields
-hobbies = ["reading", "hiking", "photography"];    // populated array
-tags = [];                                        // zero value for arrays
+hobbies = ["reading", "hiking", "photography"];     // populated array
+tags = [];                                          // zero value for arrays
 
 /* Settings block
    Contains all user preferences
@@ -85,10 +92,13 @@ settings = {
     theme = "dark";
     notifications = true;
     refresh_rate = 60;
-    custom_colors = ["#FF0000", "#00FF00", "#0000FF"];
-    display = {
-        brightness = 0.8;
-        contrast = 1.0;
+    window = {
+        size = vec2(1920.0, 1080.0);
+        position = vec2(0.0, 0.0);
+    };
+    camera = {
+        position = vec3(0.0, 1.0, -5.0);
+        rotation = vec3(0.0, 180.0, 0.0);
     };
 };
 ```
@@ -99,6 +109,19 @@ The same configuration can be written on a single line, making it perfect for co
 ```field
 /* Basic configuration */ username = "jane_doe"; age = 30; /* User settings */ settings = { theme = "dark"; notifications = true; display = { brightness = 0.8; }; };
 ```
+
+### Vector Type Rules
+
+- Vectors must have the correct number of components (2 for vec2, 3 for vec3, 4 for vec4)
+- Components can be integers or floats (integers are automatically converted to floats)
+- Vector types:
+  ```field
+  position = vec2(1.0, 2.0);               // 2D vector
+  scale = vec3(1.0, 1.0, 1.0);            // 3D vector
+  color = vec4(1.0, 0.0, 0.0, 0.5);       // 4D vector
+  mixed = vec3(1, 2.0, 3);                // Valid: ints convert to floats
+  invalid = vec3(1.0, "string", true);    // Invalid: wrong types
+  ```
 
 ### Array Type Rules
 
@@ -206,6 +229,31 @@ if (fld_get_float(parser.root, "settings.display.brightness", &float_val)) {
 bool bool_val;
 if (fld_get_bool(parser.root, "settings.notifications", &bool_val)) {
     printf("Notifications: %s\n", bool_val ? "true" : "false");
+}
+
+// Get a vec2 value
+float x, y;
+if (fld_get_vec2(parser.root, "settings.window.size", &x, &y)) {
+    printf("Window size: %.0fx%.0f\n", x, y);
+}
+
+// Get a vec3 value
+float x, y, z;
+if (fld_get_vec3(parser.root, "settings.camera.position", &x, &y, &z)) {
+    printf("Camera position: %.1f, %.1f, %.1f\n", x, y, z);
+}
+
+// Get a vec4 value
+float r, g, b, a;
+if (fld_get_vec4(parser.root, "color", &r, &g, &b, &a)) {
+    printf("Color (RGBA): %.1f, %.1f, %.1f, %.1f\n", r, g, b, a);
+}
+
+// Get raw vector components
+float components[4];
+size_t count;
+if (fld_get_vector_components(parser.root, "settings.camera.position", components, &count)) {
+    // components array contains the values, count tells you how many (2, 3, or 4)
 }
 
 // Get an array

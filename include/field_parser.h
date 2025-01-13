@@ -1,11 +1,15 @@
 /*
-*   fld_parser - v0.51
+*   fld_parser - v0.60
 *   Header-only library for parsing configuration files in the FLD format.
 *
 *   RECENT CHANGES:
+*       0.60    (2025-01-12)    Added vec2, vec3, vec4 (float) support;
+*                               Vectors are added to examples and tests;
+*                               Updated readme with description and help for new vec types;
+*       0.52    (2025-01-11)    Changed `key` argument in the appropriate functions to `path`;
 *       0.51    (2025-01-11)    Fixed a bug in the implementation of _fast_atoi;
 *                               Parser now errors out if a number is too big;
-*       0.5     (2025-01-11)    Removed stdlib.h by implementing _fast_atof and _fast_atoi;
+*       0.50    (2025-01-11)    Removed stdlib.h by implementing _fast_atof and _fast_atoi;
 *                               Fixed number handling to handle negative numbers and + prefixed positive numbers;
 *       0.41    (2025-01-10)    Fixed some bugs where proper parent relationship was not established;
 *                               Updated readme with new functions and explanations;
@@ -14,17 +18,17 @@
 *                               Changed anonymus union in `fld_value` to `as`;
 *                               Added proper tests in the tests/tests.c;
 *                               Created a quite comprehensive example file in examples/main_example.c;
-*       0.4     (2025-01-10)    Added iterator support to the parser;
-*       0.3     (2025-01-10)    Renamed `fld_get_string` to `fld_get_str_view`,
+*       0.40    (2025-01-10)    Added iterator support to the parser;
+*       0.30    (2025-01-10)    Renamed `fld_get_string` to `fld_get_str_view`,
 *                               Added `fld_get_cstr` for immediate c string retrival,
 *                               Added `fld_has field`, `fld_get_type`, `fld_get_array_size`,
 *                               `fld_string_view_to_cstr`, `fld_string_view_eq`,
 *                               `fld_get_last_error`, `fld_error_string`, and `fld_estimate_memory`;
 *       0.21    (2025-01-10)    Removed stddef.h that wasn't needed anymore;
-*       0.2     (2025-01-10)    Removed some remaining temp code,
+*       0.20    (2025-01-10)    Removed some remaining temp code,
 *                               Added block comment support,
 *                               Updated readme and `test.c` to reflect changes;
-*       0.1     (2025-01-09)    Finalized first implementation;
+*       0.10    (2025-01-09)    Finalized first implementation;
 *
 *   LICENSE: MIT License
 *       Copyright (c) 2025 Viktor Fejes
@@ -48,14 +52,15 @@
 *       SOFTWARE.
 *
 *   TODOs:
-*       - [x] A bit more testing...
 *       - [ ] Run some tests to see how close the
 *             memory estimating function gets.
 *       - [x] Remove stdlib.h include by writing own
 *             int and float parser.
 *       - [ ] Full documentation of public API
-*       - [ ] Change key to path in getters to make more sense
+*       - [x] Change key to path in getters to make more sense
 *       - [x] Add digit checking for lexer's number handling
+*       - [ ] Eliminate all compilation warnings.
+*       - [ ] Consider allowing boolean for vectors, as well.
 *
  */
 
@@ -82,7 +87,9 @@ typedef enum fld_value_type {
     FLD_VALUE_FLOAT,
     FLD_VALUE_BOOL,
     FLD_VALUE_ARRAY,
+    FLD_VALUE_VEC2,
     FLD_VALUE_VEC3,
+    FLD_VALUE_VEC4,
     FLD_VALUE_OBJECT,
 } fld_value_type;
 
@@ -100,8 +107,14 @@ typedef struct fld_value {
         } array;
         struct fld_object *object;
         struct {
+            float x, y;
+        } vec2;
+        struct {
             float x, y, z;
         } vec3;
+        struct {
+            float x, y, z, w;
+        } vec4;
     } as;
 } fld_value;
 
@@ -124,8 +137,11 @@ typedef enum {
     TOKEN_BRACE_RIGHT,
     TOKEN_BRACKET_LEFT,
     TOKEN_BRACKET_RIGHT,
+    TOKEN_PAREN_LEFT,
+    TOKEN_PAREN_RIGHT,
     TOKEN_SEMICOLON,
     TOKEN_COMMA,
+    TOKEN_VEC,
     TOKEN_EOF,
     TOKEN_ERROR
 } fld_token_type;
@@ -223,99 +239,148 @@ typedef struct {
 extern bool fld_parse(fld_parser *parser, const char *source, void *memory, size_t size);
 
 /**
- * @brief Retrieves a string view associated with a given key from the specified fld_object.
+ * @brief Retrieves a string view associated with a given path starting
+ * from the specified fld_object.
  * 
- * @param object Pointer to the fld_object from which the string view is to be retrieved.
- * @param key The key associated with the desired string view.
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the desired string view.
  * @param str_view Pointer to an fld_string_view structure where the result will be stored.
  * @return true if the string view is successfully retrieved, false otherwise.
  */
-extern bool fld_get_str_view(fld_object *object, const char *key, fld_string_view *str_view);
+extern bool fld_get_str_view(fld_object *object, const char *path, fld_string_view *str_view);
 
 /**
- * @brief Retrieves a C-string value associated with a given key from a field object.
+ * @brief Retrieves a C-string value associated with a given path starting from a field object.
  *
- * This function searches for a key within the specified field object and, if found,
+ * This function searches for a path starting from  the specified field object and, if found,
  * copies the associated C-string value into the provided buffer. The buffer size
  * must be large enough to hold the value, including the null-terminator.
  *
- * @param object Pointer to the field object from which to retrieve the value.
- * @param key The key associated with the desired C-string value.
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the desired C-string value.
  * @param buffer Pointer to the buffer where the retrieved C-string value will be stored.
  * @param buffer_size The size of the buffer, in bytes.
- * @return true if the key was found and the value was successfully copied to the buffer; 
+ * @return true if the object was found and the value was successfully copied to the buffer; 
  *         false otherwise.
  */
-extern bool fld_get_cstr(fld_object *object, const char *key, char *buffer, size_t buffer_size);
+extern bool fld_get_cstr(fld_object *object, const char *path, char *buffer, size_t buffer_size);
 
 /**
- * @brief Retrieves an integer value from a field object based on the provided key.
+ * @brief Retrieves an integer value from an object at a given path.
  *
- * This function searches for the specified key within the given field object and,
+ * This function searches for the specified path starting from the given field object and,
  * if found, assigns the corresponding integer value to the output parameter.
  *
- * @param object A pointer to the field object from which to retrieve the value.
- * @param key The key associated with the desired integer value.
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the desired integer value.
  * @param out_value A pointer to an integer where the retrieved value will be stored.
- * @return true if the key was found and the value was successfully retrieved, false otherwise.
+ * @return true if the path was found and the value was successfully retrieved, false otherwise.
  */
-extern bool fld_get_int(fld_object *object, const char *key, int *out_value);
+extern bool fld_get_int(fld_object *object, const char *path, int *out_value);
 
 /**
- * @brief Retrieves a float value from a field object based on the provided key.
+ * @brief Retrieves a float value from a field object based on the provided path.
  *
- * This function searches for the specified key within the given field object and,
+ * This function searches for the specified path starting from the given object and,
  * if found, assigns the corresponding float value to the output parameter.
  *
- * @param object A pointer to the field object from which to retrieve the value.
- * @param key The key associated with the desired float value.
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the desired float value.
  * @param out_value A pointer to a float where the retrieved value will be stored.
- * @return true if the key was found and the value was successfully retrieved, false otherwise.
+ * @return true if the object was found and the value was successfully retrieved, false otherwise.
  */
-extern bool fld_get_float(fld_object *object, const char *key, float *out_value);
+extern bool fld_get_float(fld_object *object, const char *path, float *out_value);
 
 /**
- * @brief Retrieves a bool value from a field object based on the provided key.
+ * @brief Retrieves a bool value from a field object based on the provided path.
  *
- * This function searches for the specified key within the given field object and,
- * if found, assigns the corresponding bool value to the output parameter.
+ * This function searches for an object with a specified path starting from
+ * the given field object and, if found, assigns the corresponding bool value
+ * to the output parameter.
  *
- * @param object A pointer to the field object from which to retrieve the value.
- * @param key The key associated with the desired bool value.
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the desired bool value.
  * @param out_value A pointer to a bool where the retrieved value will be stored.
- * @return true if the key was found and the value was successfully retrieved, false otherwise.
+ * @return true if the object was found and the value was successfully retrieved, false otherwise.
  */
-extern bool fld_get_bool(fld_object *object, const char *key, bool *out_value);
+extern bool fld_get_bool(fld_object *object, const char *path, bool *out_value);
 
 
 /**
  * @brief Retrieves an array from a field object based on a path.
  *
- * This function searches for an array associated with the specified key in the given field object.
+ * This function searches for an array associated with the specified path starting from the given field object.
  * If the key is found and the associated value is an array, assigns the array's type, items,
  * and count through the output parameters.
  *
- * @param object Pointer to the field object to search.
- * @param key The key associated with the array to retrieve.
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the array to retrieve.
  * @param out_type Pointer to a variable to receive the type of the array elements.
  * @param out_items Pointer to a variable to receive the pointer to the array items.
  * @param out_count Pointer to a variable to receive the count of items in the array.
  * @return true if the array is found and successfully retrieved, false otherwise.
  */
-extern bool fld_get_array(fld_object *object, const char *key, fld_value_type *out_type, void** out_items, size_t* out_count);
+extern bool fld_get_array(fld_object *object, const char *path, fld_value_type *out_type, void** out_items, size_t* out_count);
 
 /**
- * @brief Retrieves an object from a field object based on a specified key.
+ * @brief Retrieves a vec2 value from a field object based on the provided path.
  *
- * This function searches for an object within the given field object using the provided key.
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the desired vec2 value.
+ * @param out_x A pointer to store the x component.
+ * @param out_y A pointer to store the y component.
+ * @return true if the object was found and the value was successfully retrieved, false otherwise.
+ */
+extern bool fld_get_vec2(fld_object *object, const char *path, float *out_x, float *out_y);
+
+/**
+ * @brief Retrieves a vec3 value from a field object based on the provided path.
+ *
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the desired vec3 value.
+ * @param out_x A pointer to store the x component.
+ * @param out_y A pointer to store the y component.
+ * @param out_z A pointer to store the z component.
+ * @return true if the object was found and the value was successfully retrieved, false otherwise.
+ */
+extern bool fld_get_vec3(fld_object *object, const char *path, float *out_x, float *out_y, float *out_z);
+
+/**
+ * @brief Retrieves a vec4 value from a field object based on the provided path.
+ *
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the desired vec4 value.
+ * @param out_x A pointer to store the x component.
+ * @param out_y A pointer to store the y component.
+ * @param out_z A pointer to store the z component.
+ * @param out_w A pointer to store the w component.
+ * @return true if the object was found and the value was successfully retrieved, false otherwise.
+ */
+extern bool fld_get_vec4(fld_object *object, const char *path, float *out_x, float *out_y, float *out_z, float *out_w);
+
+/**
+ * @brief Retrieves a vector's components as an array of floats.
+ *
+ * @param object Pointer to the object to start the search from.
+ * @param path The path associated with the desired vector.
+ * @param out_components Buffer to store the components (must be large enough).
+ * @param out_count Number of components written (2, 3, or 4).
+ * @return true if the object was found and components were retrieved, false otherwise.
+ */
+extern bool fld_get_vec_components(fld_object *object, const char *path, float *out_components, size_t* out_count);
+
+/**
+ * @brief Retrieves an object based on a specified path.
+ *
+ * This function searches for an object starting from the given field object using the provided path.
  * If the object is found, it is returned through the out_object parameter.
  *
- * @param object The field object to search within.
- * @param key The key to search for within the field object.
+ * @param object Pointer to the object to start the search from.
+ * @param path The path to search for within the field object.
  * @param out_object A pointer to a pointer where the found object will be stored.
  * @return true if the object is found and retrieved successfully, false otherwise.
  */
-extern bool fld_get_object(fld_object *object, const char *key, fld_object **out_object);
+extern bool fld_get_object(fld_object *object, const char *path, fld_object **out_object);
 
 /**
  * @brief Retrieves an object based on a given key on the same level as given object.
@@ -331,9 +396,9 @@ extern bool fld_get_object(fld_object *object, const char *key, fld_object **out
 extern fld_object *fld_get_field(fld_object *object, const char *key);
 extern fld_object *fld_get_field_by_path(fld_object *object, const char *path);
 
-extern bool fld_has_field(fld_object *object, const char *key);
-extern fld_value_type fld_get_type(fld_object *object, const char *key);
-extern bool fld_get_array_size(fld_object *object, const char *key, size_t *out_size);
+extern bool fld_has_field(fld_object *object, const char *path);
+extern fld_value_type fld_get_type(fld_object *object, const char *path);
+extern bool fld_get_array_size(fld_object *object, const char *path, size_t *out_size);
 
 /**
  * @brief Converts a fld_string_view to a null-terminated C string.
@@ -463,6 +528,7 @@ static inline const char *fld_error_string(fld_error_code code) {
 static fld_value *_parse_object(fld_parser *parser, fld_object *parent);
 static fld_value *_parse_value(fld_parser *parser, fld_object *parent);
 static fld_object *_parse_field(fld_parser *parser, fld_object *parent);
+static fld_value *_parse_vec(fld_parser *parser, fld_object *parent);
 
 static inline void _bump_init(fld_bump_allocator *alloc, void *memory, size_t size) {
     alloc->start = (uint8_t*)memory;
@@ -675,10 +741,27 @@ static fld_token *_lexer_handle_keyword(fld_parser *parser, fld_lexer *lexer) {
 
     // Check if it's a keyword (true/false)
     int length = lexer->current - lexer->start;
-    if (length == 4 && strncmp(lexer->start, "true", 4) == 0) {
-        fld_token *token = _token_create(parser, TOKEN_BOOL, lexer->line, lexer->column);
-        token->value.boolean = true;
-        return token;
+    if (length == 4) {
+        // false
+        // TODO: Make it case insensitive!
+        if (strncmp(lexer->start, "true", 4) == 0) {
+            fld_token *token = _token_create(parser, TOKEN_BOOL, lexer->line, lexer->column);
+            token->value.boolean = true;
+            return token;
+        }
+        // We just check if it starts with Vec and according to the number
+        // that follows we emit the right token. If something is fishy, we error.
+        if (strncmp(lexer->start, "vec", 3) == 0) {
+            // If it's not 2, 3, 4 -> error!
+            if (lexer->start[3] > '4' || lexer->start[3] < '2') {
+                return _token_create(parser, TOKEN_ERROR, lexer->line, lexer->column);
+            }
+
+            // Emit Vec token where the integer value contains the supposed size
+            fld_token *token = _token_create(parser, TOKEN_VEC, lexer->line, lexer->column);
+            token->value.integer = lexer->start[3] - 48;
+            return token;
+        }
     }
     if (length == 5 && strncmp(lexer->start, "false", 5) == 0) {
         fld_token *token = _token_create(parser, TOKEN_BOOL, lexer->line, lexer->column);
@@ -783,6 +866,8 @@ static fld_token *_lexer_scan_token(fld_parser *parser) {
         case '}': return _token_create(parser, TOKEN_BRACE_RIGHT, lexer->line, lexer->column - 1);
         case '[': return _token_create(parser, TOKEN_BRACKET_LEFT, lexer->line, lexer->column - 1);
         case ']': return _token_create(parser, TOKEN_BRACKET_RIGHT, lexer->line, lexer->column - 1);
+        case '(': return _token_create(parser, TOKEN_PAREN_LEFT, lexer->line, lexer->column - 1);
+        case ')': return _token_create(parser, TOKEN_PAREN_RIGHT, lexer->line, lexer->column - 1);
         case ';': return _token_create(parser, TOKEN_SEMICOLON, lexer->line, lexer->column - 1);
         case ',': return _token_create(parser, TOKEN_COMMA, lexer->line, lexer->column - 1);
     }
@@ -1054,6 +1139,60 @@ static fld_value *_parse_array(fld_parser *parser, fld_object *parent) {
     return array;
 }
 
+static fld_value *_parse_vec(fld_parser *parser, fld_object *parent) {
+    // Get vector size from keyword token
+    int vec_size = parser->current->value.integer;
+
+    // Consume vec token
+    _parser_advance(parser);
+
+    // We expect opening parenthesis here
+    if(!_parser_expect(parser, TOKEN_PAREN_LEFT, FLD_ERROR_UNEXPECTED_TOKEN)) {
+        return NULL;
+    }
+
+    // Allocate value
+    fld_value *value = (fld_value*)_bump_alloc(&parser->allocator, sizeof(fld_value), ALIGNOF(fld_value));
+    if (!value) {
+        _parser_error(parser, FLD_ERROR_OUT_OF_MEMORY);
+    }
+    memset(value, 0, sizeof(fld_value));
+
+    // Set appropriate vector type based on size
+    value->type = (fld_value_type)(FLD_VALUE_VEC2 + vec_size - 2);
+
+    // Parse the components (they can only be float!)
+    // Here, we are casting to the first vec size in the union
+    // so we can get all the others from this address
+    float *components = (float*)&value->as.vec2;
+    for (int i = 0; i < vec_size; ++i) {
+        // Check for comma between components (except first)
+        if (i > 0 && !_parser_expect(parser, TOKEN_COMMA, FLD_ERROR_UNEXPECTED_TOKEN)) {
+            return NULL;
+        }
+
+        // Each component must be a number (int or float)
+        if (parser->current->type != TOKEN_INT && parser->current->type != TOKEN_FLOAT) {
+            _parser_error(parser, FLD_ERROR_UNEXPECTED_TOKEN);
+            return NULL;
+        }
+
+        // Store the component value (convert to float from int if needed)
+        components[i] = (parser->current->type == TOKEN_INT)
+            ? (float)parser->current->value.integer
+            : (float)parser->current->value.float_val;
+
+        _parser_advance(parser);
+    }
+
+    // Expect closing parenthesis
+    if (!_parser_expect(parser, TOKEN_PAREN_RIGHT, FLD_ERROR_UNEXPECTED_TOKEN)) {
+        return NULL;
+    }
+
+    return value;
+}
+
 static fld_value *_parse_value(fld_parser *parser, fld_object *parent) {
     // For objects and arrays we'll just use their appropriate parse functions
     if (parser->current->type == TOKEN_BRACE_LEFT) {
@@ -1106,6 +1245,10 @@ static fld_value *_parse_value(fld_parser *parser, fld_object *parent) {
             value->as.boolean = parser->current->value.boolean;
             _parser_advance(parser);
             return value;
+        }
+
+        case TOKEN_VEC: {
+            return _parse_vec(parser, parent);
         }
 
         default: {
@@ -1235,13 +1378,13 @@ bool fld_parse(fld_parser *parser, const char *source, void *memory, size_t size
     return parser->last_error.code == FLD_ERROR_NONE;
 }
 
-fld_object *fld_get_field(fld_object *object, const char *key) {
+fld_object *fld_get_field(fld_object *object, const char *path) {
     fld_object *current = object;
-    int key_len = strlen(key);
+    int key_len = strlen(path);
 
     while (current) {
         if (current->key.length == key_len &&
-            memcmp(current->key.start, key, key_len) == 0) {
+            memcmp(current->key.start, path, key_len) == 0) {
             return current;
         }
         current = current->next;
@@ -1290,8 +1433,8 @@ fld_object *fld_get_field_by_path(fld_object *object, const char *path) {
     return NULL;
 }
 
-bool fld_get_str_view(fld_object *object, const char *key, fld_string_view *str_view) {
-    fld_object *field = fld_get_field_by_path(object, key);
+bool fld_get_str_view(fld_object *object, const char *path, fld_string_view *str_view) {
+    fld_object *field = fld_get_field_by_path(object, path);
     if (!field || field->value.type != FLD_VALUE_STRING) {
         return false;
     }
@@ -1300,14 +1443,14 @@ bool fld_get_str_view(fld_object *object, const char *key, fld_string_view *str_
     return true;
 }
 
-bool fld_get_cstr(fld_object *object, const char *key, char *buffer, size_t buffer_size) {
+bool fld_get_cstr(fld_object *object, const char *path, char *buffer, size_t buffer_size) {
     fld_string_view str_view;
 
     // Validate input
     if (!buffer || buffer_size == 0) return false;
     
     // Try to get string view first
-    if (!fld_get_str_view(object, key, &str_view)) {
+    if (!fld_get_str_view(object, path, &str_view)) {
         // Null terminate on failure
         buffer[0] = '\0';
         return false;
@@ -1324,8 +1467,8 @@ bool fld_get_cstr(fld_object *object, const char *key, char *buffer, size_t buff
     return true;
 }
 
-bool fld_get_int(fld_object *object, const char *key, int *out_value) {
-    fld_object *field = fld_get_field_by_path(object, key);
+bool fld_get_int(fld_object *object, const char *path, int *out_value) {
+    fld_object *field = fld_get_field_by_path(object, path);
     if (!field || field->value.type != FLD_VALUE_INT) {
         return false;
     }
@@ -1333,8 +1476,8 @@ bool fld_get_int(fld_object *object, const char *key, int *out_value) {
     return true;
 }
 
-bool fld_get_float(fld_object *object, const char *key, float *out_value) {
-    fld_object *field = fld_get_field_by_path(object, key);
+bool fld_get_float(fld_object *object, const char *path, float *out_value) {
+    fld_object *field = fld_get_field_by_path(object, path);
     if (!field || field->value.type != FLD_VALUE_FLOAT) {
         return false;
     }
@@ -1342,8 +1485,8 @@ bool fld_get_float(fld_object *object, const char *key, float *out_value) {
     return true;
 }
 
-bool fld_get_bool(fld_object *object, const char *key, bool *out_value) {
-    fld_object *field = fld_get_field_by_path(object, key);
+bool fld_get_bool(fld_object *object, const char *path, bool *out_value) {
+    fld_object *field = fld_get_field_by_path(object, path);
     if (!field || field->value.type != FLD_VALUE_BOOL) {
         return false;
     }
@@ -1351,8 +1494,8 @@ bool fld_get_bool(fld_object *object, const char *key, bool *out_value) {
     return true;
 }
 
-bool fld_get_array(fld_object *object, const char *key, fld_value_type *out_type, void** out_items, size_t* out_count) {
-    fld_object* field = fld_get_field_by_path(object, key);
+bool fld_get_array(fld_object *object, const char *path, fld_value_type *out_type, void** out_items, size_t* out_count) {
+    fld_object* field = fld_get_field_by_path(object, path);
     if (!field || field->value.type != FLD_VALUE_ARRAY) {
         return false;
     }
@@ -1362,8 +1505,56 @@ bool fld_get_array(fld_object *object, const char *key, fld_value_type *out_type
     return true;
 }
 
-bool fld_get_object(fld_object *object, const char *key, fld_object **out_object) {
-    fld_object* field = fld_get_field_by_path(object, key);
+bool fld_get_vec2(fld_object *object, const char *path, float *out_x, float *out_y) {
+    fld_object *field = fld_get_field_by_path(object, path);
+    if (!field || field->value.type != FLD_VALUE_VEC2) {
+        return false;
+    }
+    *out_x = field->value.as.vec2.x;
+    *out_y = field->value.as.vec2.y;
+    return true;
+}
+
+bool fld_get_vec3(fld_object *object, const char *path, float *out_x, float *out_y, float *out_z) {
+    fld_object *field = fld_get_field_by_path(object, path);
+    if (!field || field->value.type != FLD_VALUE_VEC3) {
+        return false;
+    }
+    *out_x = field->value.as.vec3.x;
+    *out_y = field->value.as.vec3.y;
+    *out_z = field->value.as.vec3.z;
+    return true;
+}
+
+bool fld_get_vec4(fld_object *object, const char *path, float *out_x, float *out_y, float *out_z, float *out_w) {
+    fld_object *field = fld_get_field_by_path(object, path);
+    if (!field || field->value.type != FLD_VALUE_VEC4) {
+        return false;
+    }
+    *out_x = field->value.as.vec4.x;
+    *out_y = field->value.as.vec4.y;
+    *out_z = field->value.as.vec4.z;
+    *out_w = field->value.as.vec4.w;
+    return true;
+}
+
+bool fld_get_vec_components(fld_object *object, const char *path, float *out_components, size_t* out_count) {
+    fld_object* field = fld_get_field_by_path(object, path);
+    if (!field || field->value.type < FLD_VALUE_VEC2 || field->value.type > FLD_VALUE_VEC4) {
+        return false;
+    }
+
+    // Calculate component count from type
+    *out_count = (field->value.type - FLD_VALUE_VEC2) + 2;
+
+    // Copy components using the fact that vectors are contiguous in memory
+    const float *src = (const float*)&field->value.as.vec2;
+    memcpy(out_components, src, *out_count * sizeof(float));
+    return true;
+}
+
+bool fld_get_object(fld_object *object, const char *path, fld_object **out_object) {
+    fld_object* field = fld_get_field_by_path(object, path);
     if (!field || field->value.type != FLD_VALUE_OBJECT) {
         return false;
     }
@@ -1371,20 +1562,20 @@ bool fld_get_object(fld_object *object, const char *key, fld_object **out_object
     return true;
 }
 
-bool fld_has_field(fld_object *object, const char *key) {
-    return fld_get_field_by_path(object, key) != NULL;
+bool fld_has_field(fld_object *object, const char *path) {
+    return fld_get_field_by_path(object, path) != NULL;
 }
 
-fld_value_type fld_get_type(fld_object *object, const char *key) {
-    fld_object *field = fld_get_field_by_path(object, key);
+fld_value_type fld_get_type(fld_object *object, const char *path) {
+    fld_object *field = fld_get_field_by_path(object, path);
     if (!field) {
         return FLD_VALUE_EMPTY;
     }
     return field->value.type;
 }
 
-bool fld_get_array_size(fld_object *object, const char *key, size_t *out_size) {
-    fld_object *field = fld_get_field_by_path(object, key);
+bool fld_get_array_size(fld_object *object, const char *path, size_t *out_size) {
+    fld_object *field = fld_get_field_by_path(object, path);
     if (!field || field->value.type != FLD_VALUE_ARRAY) {
         return false;
     }

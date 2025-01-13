@@ -18,6 +18,8 @@ static void cleanup_parser(void* memory) {
     free(memory);
 }
 
+// TODO: Rename main name of tests from Parser to something better
+// for better grouping.
 TEST(Parser, BasicPrimitives) {
     const char* source = 
         "string_val = \"test\";\n"
@@ -108,6 +110,193 @@ TEST(Parser, NestedObjects) {
     fld_object* inner;
     EXPECT_TRUE(fld_get_object(outer, "inner", &inner));
     EXPECT_TRUE(inner != NULL);
+    
+    cleanup_parser(memory);
+    return true;
+}
+
+TEST(Parser, VectorTypes) {
+    const char* source = 
+        "vec2_val = vec2(1.0, 2.0);\n"
+        "vec3_val = vec3(-1.5, 0.0, 3.14);\n"
+        "vec4_val = vec4(1.0, 2.0, 3.0, 4.0);\n"
+        "// Test integer to float conversion\n"
+        "vec2_ints = vec2(1, 2);\n"
+        "vec3_mixed = vec3(1, 2.5, 3);\n"
+        "nested = {\n"
+        "    position = vec3(10.0, 20.0, 30.0);\n"
+        "};\n";
+    
+    fld_parser parser = {0};
+    void* memory = NULL;
+    
+    EXPECT_TRUE(setup_parser(&parser, source, &memory));
+    
+    // Test vec2 retrieval
+    float x2, y2;
+    EXPECT_TRUE(fld_get_vec2(parser.root, "vec2_val", &x2, &y2));
+    EXPECT_EQ_FLOAT(x2, 1.0f);
+    EXPECT_EQ_FLOAT(y2, 2.0f);
+    
+    // Test vec3 retrieval
+    float x3, y3, z3;
+    EXPECT_TRUE(fld_get_vec3(parser.root, "vec3_val", &x3, &y3, &z3));
+    EXPECT_EQ_FLOAT(x3, -1.5f);
+    EXPECT_EQ_FLOAT(y3, 0.0f);
+    EXPECT_EQ_FLOAT(z3, 3.14f);
+    
+    // Test vec4 retrieval
+    float x4, y4, z4, w4;
+    EXPECT_TRUE(fld_get_vec4(parser.root, "vec4_val", &x4, &y4, &z4, &w4));
+    EXPECT_EQ_FLOAT(x4, 1.0f);
+    EXPECT_EQ_FLOAT(y4, 2.0f);
+    EXPECT_EQ_FLOAT(z4, 3.0f);
+    EXPECT_EQ_FLOAT(w4, 4.0f);
+    
+    // Test integer to float conversion in vec2
+    EXPECT_TRUE(fld_get_vec2(parser.root, "vec2_ints", &x2, &y2));
+    EXPECT_EQ_FLOAT(x2, 1.0f);
+    EXPECT_EQ_FLOAT(y2, 2.0f);
+    
+    // Test mixed integer/float in vec3
+    EXPECT_TRUE(fld_get_vec3(parser.root, "vec3_mixed", &x3, &y3, &z3));
+    EXPECT_EQ_FLOAT(x3, 1.0f);
+    EXPECT_EQ_FLOAT(y3, 2.5f);
+    EXPECT_EQ_FLOAT(z3, 3.0f);
+    
+    // Test nested path access
+    EXPECT_TRUE(fld_get_vec3(parser.root, "nested.position", &x3, &y3, &z3));
+    EXPECT_EQ_FLOAT(x3, 10.0f);
+    EXPECT_EQ_FLOAT(y3, 20.0f);
+    EXPECT_EQ_FLOAT(z3, 30.0f);
+    
+    cleanup_parser(memory);
+    return true;
+}
+
+TEST(Parser, VectorErrors) {
+    const char* source = 
+        "// Invalid vector sizes\n"
+        "vec1 = vec1(1.0);\n"
+        "vec5 = vec5(1,2,3,4,5);\n"
+        "\n"
+        "// Wrong number of components\n"
+        "vec2_missing = vec2(1.0);\n"
+        "vec2_extra = vec2(1.0, 2.0, 3.0);\n"
+        "vec3_missing = vec3(1.0, 2.0);\n"
+        "vec4_extra = vec4(1,2,3,4,5);\n"
+        "\n"
+        "// Invalid component types\n"
+        "vec2_invalid = vec2(\"string\", 1.0);\n"
+        "vec3_invalid = vec3(true, 1.0, 2.0);\n"
+        "\n"
+        "// Valid vector for type checking\n"
+        "valid_vec3 = vec3(1,2,3);\n";
+
+    fld_parser parser = {0};
+    void* memory = NULL;
+    
+    // Parser should fail with invalid vector syntax
+    EXPECT_FALSE(setup_parser(&parser, source, &memory));
+    
+    // Test separate error cases with individual vectors
+    const char* valid_source = "valid_vec3 = vec3(1,2,3);";
+    EXPECT_TRUE(setup_parser(&parser, valid_source, &memory));
+    
+    // Test type mismatches
+    float x2, y2;
+    EXPECT_FALSE(fld_get_vec2(parser.root, "valid_vec3", &x2, &y2));
+    
+    float x4, y4, z4, w4;
+    EXPECT_FALSE(fld_get_vec4(parser.root, "valid_vec3", &x4, &y4, &z4, &w4));
+    
+    cleanup_parser(memory);
+    return true;
+}
+
+TEST(Parser, VectorComponents) {
+    const char* source = 
+        "pos2 = vec2(1.5, -2.0);\n"
+        "pos3 = vec3(1.0, 0.0, -1.0);\n"
+        "pos4 = vec4(-1.5, 2.5, 0.0, 1.0);\n";
+    
+    fld_parser parser = {0};
+    void* memory = NULL;
+    
+    EXPECT_TRUE(setup_parser(&parser, source, &memory));
+
+    // Test getting raw components
+    float components[4];
+    size_t count;
+    
+    EXPECT_TRUE(fld_get_vec_components(parser.root, "pos2", components, &count));
+    EXPECT_EQ(count, 2);
+    EXPECT_EQ_FLOAT(components[0], 1.5f);
+    EXPECT_EQ_FLOAT(components[1], -2.0f);
+    
+    EXPECT_TRUE(fld_get_vec_components(parser.root, "pos3", components, &count));
+    EXPECT_EQ(count, 3);
+    EXPECT_EQ_FLOAT(components[0], 1.0f);
+    EXPECT_EQ_FLOAT(components[1], 0.0f);
+    EXPECT_EQ_FLOAT(components[2], -1.0f);
+    
+    EXPECT_TRUE(fld_get_vec_components(parser.root, "pos4", components, &count));
+    EXPECT_EQ(count, 4);
+    EXPECT_EQ_FLOAT(components[0], -1.5f);
+    EXPECT_EQ_FLOAT(components[1], 2.5f);
+    EXPECT_EQ_FLOAT(components[2], 0.0f);
+    EXPECT_EQ_FLOAT(components[3], 1.0f);
+    
+    // Test type checking
+    EXPECT_EQ(fld_get_type(parser.root, "pos2"), FLD_VALUE_VEC2);
+    EXPECT_EQ(fld_get_type(parser.root, "pos3"), FLD_VALUE_VEC3);
+    EXPECT_EQ(fld_get_type(parser.root, "pos4"), FLD_VALUE_VEC4);
+    
+    cleanup_parser(memory);
+    return true;
+}
+
+TEST(Parser, VectorEdgeCases) {
+    const char* source = 
+        "// Test whitespace handling\n"
+        "vec2_spaces = vec2 ( 1.0 , 2.0 );\n"
+        "vec3_newlines = vec3(\n"
+        "    1.0,\n"
+        "    2.0,\n"
+        "    3.0\n"
+        ");\n"
+        "// Test zero values\n"
+        "vec2_zeros = vec2(0.0, 0.0);\n"
+        "// Test large values\n"
+        "vec2_large = vec2(999999.0, -999999.0);\n";
+    
+    fld_parser parser = {0};
+    void* memory = NULL;
+    
+    EXPECT_TRUE(setup_parser(&parser, source, &memory));
+    
+    float x, y, z;
+    
+    // Test whitespace handling
+    EXPECT_TRUE(fld_get_vec2(parser.root, "vec2_spaces", &x, &y));
+    EXPECT_EQ_FLOAT(x, 1.0f);
+    EXPECT_EQ_FLOAT(y, 2.0f);
+    
+    // Test multi-line formatting
+    EXPECT_TRUE(fld_get_vec3(parser.root, "vec3_newlines", &x, &y, &z));
+    EXPECT_EQ_FLOAT(x, 1.0f);
+    EXPECT_EQ_FLOAT(y, 2.0f);
+    EXPECT_EQ_FLOAT(z, 3.0f);
+    
+    // Test zero values
+    EXPECT_TRUE(fld_get_vec2(parser.root, "vec2_zeros", &x, &y));
+    EXPECT_EQ_FLOAT(x, 0.0f);
+    EXPECT_EQ_FLOAT(y, 0.0f);
+    
+    // Test large values
+    EXPECT_TRUE(fld_get_vec2(parser.root, "vec2_large", &x, &y));
+    EXPECT_EQ_FLOAT(x, 999999.0f);
+    EXPECT_EQ_FLOAT(y, -999999.0f);
     
     cleanup_parser(memory);
     return true;
